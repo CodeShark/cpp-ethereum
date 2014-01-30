@@ -21,7 +21,12 @@
 
 #include "Common.h"
 #include "Client.h"
+
+#include <boost/thread/thread.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
+
 using namespace std;
+using namespace boost;
 using namespace eth;
 
 Client::Client(std::string const& _clientVersion, Address _us, std::string const& _dbPath):
@@ -50,7 +55,8 @@ Client::~Client()
 	if (m_workState == Active)
 		m_workState = Deleting;
 	while (m_workState != Deleted)
-		usleep(10000);
+                boost::this_thread::sleep(boost::posix_time::microseconds(10000));
+		//usleep(10000);
 }
 
 void Client::startNetwork(short _listenPort, std::string const& _seedHost, short _port)
@@ -143,7 +149,8 @@ void Client::work()
 		}
 	}
 	else
-		usleep(100000);
+                boost::this_thread::sleep(boost::posix_time::microseconds(100000));
+		//usleep(100000);
 }
 
 void Client::lock()

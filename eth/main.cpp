@@ -25,6 +25,10 @@
 #include "PeerNetwork.h"
 #include "BlockChain.h"
 #include "State.h"
+
+#include <boost/thread/thread.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
+
 using namespace std;
 using namespace eth;
 
@@ -173,7 +177,8 @@ int main(int argc, char** argv)
 				c.stopMining();
 			else
 				c.startMining();
-			usleep(100000);
+                        boost::this_thread::sleep(boost::posix_time::microseconds(100000));
+			//usleep(100000);
 		}
 	}
 

@@ -4,6 +4,9 @@ cmake_minimum_required(VERSION 2.8)
 cmake_policy(SET CMP0015 NEW)
 
 # Initialize CXXFLAGS.
+set(CMAKE_CXX_COMPILER             "x86_64-w64-mingw32-g++")
+set(CMAKE_AR                       "x86_64-w64-mingw32-ar")
+set(CMAKE_RANLIB                   "x86_64-w64-mingw32-ranlib")
 set(CMAKE_CXX_FLAGS                "-Wall -std=c++0x")
 set(CMAKE_CXX_FLAGS_DEBUG          "-O0 -g")
 set(CMAKE_CXX_FLAGS_MINSIZEREL     "-Os -DNDEBUG")

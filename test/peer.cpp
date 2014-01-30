@@ -22,6 +22,10 @@
 
 #include <BlockChain.h>
 #include <PeerNetwork.h>
+
+#include <boost/thread/thread.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
+
 using namespace std;
 using namespace eth;
 using boost::asio::ip::tcp;
@@ -53,7 +57,8 @@ int peerTest(int argc, char** argv)
 
 	for (int i = 0; ; ++i)
 	{
-		usleep(100000);
+                boost::this_thread::sleep(boost::posix_time::microseconds(100000));
+		//usleep(100000);
 		pn.process(ch);
 		if (!(i % 10))
 			pn.pingAll();

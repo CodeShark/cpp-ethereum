@@ -25,6 +25,8 @@
 #include "PeerNetwork.h"
 
 #include <boost/chrono.hpp>
+#include <boost/thread/thread.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
 
 using namespace std;
 using namespace eth;
@@ -319,7 +321,8 @@ void PeerSession::disconnect()
 	prep(s);
 	s.appendList(1) << (uint)Disconnect;
 	sealAndSend(s);
-	sleep(1);
+        boost::this_thread::sleep(boost::posix_time::microseconds(1000000));
+	//sleep(1);
 	m_socket.close();
 }
 
@@ -637,7 +640,8 @@ bool PeerServer::process(BlockChain& _bc, TransactionQueue& _tq, Overlay& _o)
 std::vector<PeerInfo> PeerServer::peers() const
 {
 	const_cast<PeerServer*>(this)->pingAll();
-	usleep(200000);
+        boost::this_thread::sleep(boost::posix_time::microseconds(200000));
+	//usleep(200000);
 	std::vector<PeerInfo> ret;
 	for (auto& i: m_peers)
 		if (auto j = i.lock())
