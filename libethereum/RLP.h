@@ -54,19 +54,19 @@ public:
 	class BadCast: public std::exception {};
 
 	/// Construct a null node.
-	RLP() {}
+	RLP() : m_lastIndex((uint)-1), m_lastEnd(0){}
 
 	/// Construct a node of value given in the bytes.
-	explicit RLP(bytesConstRef _d): m_data(_d) {}
+	explicit RLP(bytesConstRef _d): m_data(_d), m_lastIndex((uint)-1), m_lastEnd(0) {}
 
 	/// Construct a node of value given in the bytes.
-	explicit RLP(bytes const& _d): m_data(&_d) {}
+	explicit RLP(bytes const& _d): m_data(&_d), m_lastIndex((uint)-1), m_lastEnd(0) {}
 
 	/// Construct a node to read RLP data in the bytes given.
-	RLP(byte const* _b, uint _s): m_data(bytesConstRef(_b, _s)) {}
+	RLP(byte const* _b, uint _s): m_data(bytesConstRef(_b, _s)), m_lastIndex((uint)-1), m_lastEnd(0) {}
 
 	/// Construct a node to read RLP data in the string.
-	explicit RLP(std::string const& _s): m_data(bytesConstRef((byte const*)_s.data(), _s.size())) {}
+	explicit RLP(std::string const& _s): m_data(bytesConstRef((byte const*)_s.data(), _s.size())), m_lastIndex((uint)-1), m_lastEnd(0) {}
 
 	bytesConstRef data() const { return m_data; }
 
@@ -144,10 +144,10 @@ public:
 		bool operator!=(iterator const& _cmp) const { return !operator==(_cmp); }
 
 	private:
-		iterator() {}
+		iterator() : m_remaining(0) {}
 		iterator(RLP const& _parent, bool _begin);
 
-		uint m_remaining = 0;
+		uint m_remaining;
 		bytesConstRef m_lastItem;
 	};
 
@@ -282,8 +282,8 @@ private:
 	bytesConstRef m_data;
 
 	/// The list-indexing cache.
-	mutable uint m_lastIndex = (uint)-1;
-	mutable uint m_lastEnd = 0;
+	mutable uint m_lastIndex;
+	mutable uint m_lastEnd;
 	mutable bytesConstRef m_lastItem;
 };
 

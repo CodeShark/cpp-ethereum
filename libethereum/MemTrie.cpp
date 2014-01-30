@@ -29,6 +29,7 @@ namespace eth
 {
 
 #define ENABLE_DEBUG_PRINT 0
+#define override
 
 /*/
 #define APPEND_CHILD appendString

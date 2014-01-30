@@ -37,9 +37,10 @@ struct Signature
 // [ nonce, receiving_address, value, fee, [ data item 0, data item 1 ... data item n ], v, r, s ]
 struct Transaction
 {
+public:
 	Transaction() {}
-	Transaction(bytesConstRef _rlp);
-	Transaction(bytes const& _rlp): Transaction(&_rlp) {}
+	Transaction(bytesConstRef _rlp) { init(_rlp); }
+	Transaction(bytes const& _rlp) { init(&_rlp); }
 
 	u256 nonce;
 	Address receiveAddress;
@@ -58,6 +59,9 @@ struct Transaction
 	std::string rlpString(bool _sig = true) const { return asString(rlp(_sig)); }
 	h256 sha3(bool _sig = true) const { RLPStream s; fillStream(s, _sig); return eth::sha3(s.out()); }
 	bytes sha3Bytes(bool _sig = true) const { RLPStream s; fillStream(s, _sig); return eth::sha3Bytes(s.out()); }
+
+private:
+        void init(bytesConstRef _rlp);
 };
 
 }

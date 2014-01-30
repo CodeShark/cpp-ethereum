@@ -28,7 +28,10 @@ Client::Client(std::string const& _clientVersion, Address _us, std::string const
 	m_clientVersion(_clientVersion),
 	m_bc(_dbPath),
 	m_stateDB(State::openDB(_dbPath)),
-	m_s(_us, m_stateDB)
+	m_s(_us, m_stateDB),
+        m_net(nullptr),
+        m_workState(Active),
+        m_doMine(false)
 {
 	Defaults::setDBPath(_dbPath);
 

@@ -20,10 +20,10 @@
  * Dagger test functions.
  */
 
-#include <chrono>
+#include <boost/chrono.hpp>
 #include "Dagger.h"
 using namespace std;
-using namespace std::chrono;
+using namespace boost::chrono;
 using namespace eth;
 
 int daggerTest()

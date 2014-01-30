@@ -23,6 +23,7 @@
 
 #include <memory>
 #include <utility>
+#include <boost/chrono.hpp>
 #include <boost/asio.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <thread>
@@ -58,7 +59,7 @@ struct PeerInfo
 	std::string clientVersion;
 	std::string host;
 	short port;
-	std::chrono::steady_clock::duration lastPing;
+	boost::chrono::steady_clock::duration lastPing;
 };
 
 class PeerSession: public std::enable_shared_from_this<PeerSession>
@@ -96,7 +97,7 @@ private:
 	uint m_networkId;
 	uint m_reqNetworkId;
 
-	std::chrono::steady_clock::time_point m_ping;
+	boost::chrono::steady_clock::time_point m_ping;
 
 	std::set<h256> m_knownBlocks;
 	std::set<h256> m_knownTransactions;
@@ -141,7 +142,7 @@ private:
 
 	std::string m_clientVersion;
 
-	BlockChain const* m_chain = nullptr;
+	BlockChain const* m_chain;
 	ba::io_service m_ioService;
 	bi::tcp::acceptor m_acceptor;
 	bi::tcp::socket m_socket;
@@ -156,8 +157,8 @@ private:
 	h256 m_latestBlockSent;
 	std::set<h256> m_transactionsSent;
 
-	std::chrono::steady_clock::time_point m_lastPeersRequest;
-	unsigned m_idealPeerCount = 5;
+	boost::chrono::steady_clock::time_point m_lastPeersRequest;
+	unsigned m_idealPeerCount;
 };
 
 

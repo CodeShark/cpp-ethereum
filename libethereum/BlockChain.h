@@ -71,8 +71,8 @@ class UnknownParent: public std::exception {};
 class BlockChain
 {
 public:
-	BlockChain(bool _killExisting = false): BlockChain(std::string(), _killExisting) {}
-	BlockChain(std::string _path, bool _killExisting = false);
+	BlockChain(bool _killExisting = false) { init(std::string(), _killExisting); }
+	BlockChain(std::string _path, bool _killExisting = false) { init(_path, _killExisting); }
 	~BlockChain();
 
 	/// (Potentially) renders invalid existing bytesConstRef returned by lastBlock.
@@ -103,6 +103,8 @@ public:
 	h256 genesisHash() const { return m_genesisHash; }
 
 private:
+        void init(std::string _path, bool _killExisting = false);
+
 	void checkConsistency();
 
 	/// Get fully populated from disk DB.

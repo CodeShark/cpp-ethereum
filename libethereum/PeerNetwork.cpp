@@ -23,6 +23,9 @@
 #include "BlockChain.h"
 #include "TransactionQueue.h"
 #include "PeerNetwork.h"
+
+#include <boost/chrono.hpp>
+
 using namespace std;
 using namespace eth;
 
@@ -57,7 +60,7 @@ bool PeerSession::interpret(RLP const& _r)
 			return false;
 		}
 		try
-			{ m_info = PeerInfo({clientVersion, m_socket.remote_endpoint().address().to_string(), (short)m_socket.remote_endpoint().port(), std::chrono::steady_clock::duration()}); }
+			{ m_info = PeerInfo({clientVersion, m_socket.remote_endpoint().address().to_string(), (short)m_socket.remote_endpoint().port(), boost::chrono::steady_clock::duration()}); }
 		catch (...)
 		{
 			disconnect();
@@ -91,7 +94,7 @@ bool PeerSession::interpret(RLP const& _r)
 		break;
 	}
 	case Pong:
-		m_info.lastPing = std::chrono::steady_clock::now() - m_ping;
+		m_info.lastPing = boost::chrono::steady_clock::now() - m_ping;
 //		cout << "Latency: " << chrono::duration_cast<chrono::milliseconds>(m_lastPing).count() << " ms" << endl;
 		break;
 	case GetPeers:
@@ -241,7 +244,7 @@ void PeerSession::ping()
 {
 	RLPStream s;
 	sealAndSend(prep(s).appendList(1) << Ping);
-	m_ping = std::chrono::steady_clock::now();
+	m_ping = boost::chrono::steady_clock::now();
 }
 
 RLPStream& PeerSession::prep(RLPStream& _s)
@@ -385,16 +388,19 @@ PeerServer::PeerServer(std::string const& _clientVersion, BlockChain const& _ch,
 	m_chain(&_ch),
 	m_acceptor(m_ioService, bi::tcp::endpoint(bi::tcp::v4(), _port)),
 	m_socket(m_ioService),
-	m_requiredNetworkId(_networkId)
+	m_requiredNetworkId(_networkId),
+        m_idealPeerCount(5)
 {
 	doAccept();
 }
 
 PeerServer::PeerServer(std::string const& _clientVersion, uint _networkId):
 	m_clientVersion(_clientVersion),
+        m_chain(nullptr),
 	m_acceptor(m_ioService, bi::tcp::endpoint(bi::tcp::v4(), 0)),
 	m_socket(m_ioService),
-	m_requiredNetworkId(_networkId)
+	m_requiredNetworkId(_networkId),
+        m_idealPeerCount(5)
 {
 }
 
@@ -508,7 +514,7 @@ bool PeerServer::process(BlockChain& _bc, TransactionQueue& _tq, Overlay& _o)
 		m_latestBlockSent = _bc.currentHash();
 		for (auto const& i: _tq.transactions())
 			m_transactionsSent.insert(i.first);
-		m_lastPeersRequest = chrono::steady_clock::now();
+		m_lastPeersRequest = boost::chrono::steady_clock::now();
 		ret = true;
 	}
 
