@@ -11,8 +11,8 @@ link_directories(../../cryptopp562)
 include_directories(../libethereum)
 link_directories(../libethereum)
 
-include_directories(/opt/mingw64/include)
-link_directories(/opt/mingw64/lib)
+include_directories(/usr/x86_64-w64-mingw32/include)
+link_directories(/usr/x86_64-w64-mingw32/lib)
 
 add_executable(eth ${SRC_LIST})
 

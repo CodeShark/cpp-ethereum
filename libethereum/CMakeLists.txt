@@ -6,8 +6,8 @@ link_directories(../../secp256k1)
 include_directories(../../cryptopp562)
 link_directories(../../cryptopp562)
 
-include_directories(/opt/mingw64/include)
-link_directories(/opt/mingw64/lib)
+include_directories(/usr/x86_64-w64-mingw32/include)
+link_directories(/usr/x86_64-w64-mingw32/lib)
 
 aux_source_directory(. SRC_LIST)
 add_library(ethereum ${SRC_LIST})
