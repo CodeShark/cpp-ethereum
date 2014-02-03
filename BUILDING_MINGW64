@@ -38,7 +38,18 @@
     $ sudo make install
     $ cd ..
 
-6) Build cryptopp562 for windows:
+6) Build miniupnpc for windows:
+    $ wget http://miniupnp.free.fr/files/download.php?file=miniupnpc-1.9.tar.gz -O miniupnpc-1.9.tar.gz
+    $ tar xzvf miniupnpc-1.9.tar.gz
+    $ cd miniupnpc-1.9
+    $ CC=x86_64-w64-mingw32-gcc AR=x86_64-w64-mingw32-ar CFLAGS=-I/usr/x86_64-w64-mingw32/include LDFLAGS=-L/usr/x86_64-w64-mingw32/lib make
+        (ignore undefined reference errors)
+    $ sudo mkdir /usr/x86_64-w64-mingw32/include/miniupnpc
+    $ sudo cp *.h /usr/x86_64-w64-mingw32/include/miniupnpc/
+    $ sudo cp libminiupnpc.a /usr/x86_64-w64-mingw32/lib/
+    $ cd ..
+
+7) Build cryptopp562 for windows:
     $ mkdir cryptopp562
     $ cd cryptopp562
     $ wget http://www.cryptopp.com/cryptopp562.zip
@@ -47,7 +58,7 @@
     $ x86_64-w64-mingw32-ranlib *.a
     $ cd ..
 
-7) Build secp256k1 for windows:
+8) Build secp256k1 for windows:
     $ wget http://gavwood.com/secp256k1.tar.bz2
     $ tar xjvf secp256k1.tar.bz2
     $ cd secp256k1
@@ -70,11 +81,48 @@
 
     Building the dynamic library gave an error, but we only care about the static library.
 
-8) Build cpp-ethereum:
-    $ git clone https://github.com/CodeShark/cpp-ethereum
-    $ cd cpp-ethereum
+9) Build cpp-ethereum:
+    $ git clone https://github.com/CodeShark/cpp-ethereum cpp-ethereum-win
+    $ cd cpp-ethereum-win
     $ git checkout mingw32-gcc4.6
-    $ cd libethereum
+    $ cd ..
+
+    $ git clone https://github.com/ethereum/cpp-ethereum
+    $ cd cpp-ethereum/libethereum
+    $ cp ../../cpp-ethereum-win/libethereum/Makefile ./
+    $ mkdir obj
+    $ mkdir lib
+
+    # change using a = b; syntax to typedef b a;
+    $ sed -i -e 's/using\s\+\([^\w=]\+\)\w*=\w*\([^\;]\+\)/typedef \2 \1/g' $(find . -type f)
+
+    # use boost chrono and thread libraries
+    $ sed -i -e 's/std::chrono/boost::chrono/g' $(find . -type f)
+    $ sed -i -e 's/std::thread/boost::thread/g' $(find . -type f)
+    $ sed -i -e 's/std::mutex/boost::mutex/g' $(find . -type f)
+    $ sed -i -e 's/#include <chrono>/#include <boost\/chrono.hpp>/g' $(find . -type f)
+    $ sed -i -e 's/#include <thread>/#include <boost\/thread.hpp>/g' $(find . -type f)
+    $ sed -i -e 's/#include <mutex>/#include <boost\/thread\/mutex.hpp>/g' $(find . -type f)
+
+    $ sed -i -e 's/ chrono/ boost::chrono/g' PeerNetwork.cpp
+    $ sed -i -e 's/(chrono/(boost::chrono/g' PeerNetwork.cpp
+
+    # replace usleep
+    $ sed -i -e 's/usleep\w*(\([^)]\+\))/boost::this_thread::sleep(boost::posix_time::microseconds(\1))/g' $(find . -type f)
+
+    # place member initializations in constructors for several classes
+    # split constructors that call other constructors into a shared private void init method that both constructors call
+    # find portable solution for ifaddrs.h
+    # find portable solution for default datadir
+
     $ make
     $ cd ../eth
+    $ cp ../../cpp-ethereum-win/eth/Makefile ./
+    # add -lminiupnpc to Makefile after -lleveldb    
+
+    $ mkdir obj
+
+    # replace usleep
+    $ sed -i -e 's/usleep\w*(\([^)]\+\))/boost::this_thread::sleep(boost::posix_time::microseconds(\1))/g' $(find . -type f)
+
     $ make
