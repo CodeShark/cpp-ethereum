@@ -72,13 +72,17 @@ INCLUDE_PATH += \
     -lmswsock \
     -lshlwapi
 
+SECP256K1_OBJS = \
+    ../../secp256k1/obj/secp256k1.o \
+    ../../secp256k1/obj/field_5x52_asm.o
+
 all: $(OBJS) lib/libethereum.a
 
 obj/%.o: %.cpp %.h
 	$(CXX) $(CXX_FLAGS) -c -o $@ $< $(INCLUDE_PATH)
 
-lib/libethereum.a: $(OBJS)
-	$(AR) rcs $@ $^	
+lib/libethereum.a: $(OBJS) $(SECP256K1_OBJS)
+	$(AR) rcs $@ $^
 
 clean:
 	-rm -f obj/*.o

@@ -60,8 +60,12 @@
         CFLAGS_EXTRA+=-I/usr/x86_64-w64-mingw32/include
         LDFLAGS_EXTRA+=-L/usr/x86_64-w64-mingw32/lib
 
+    Edit Makefile, change line:
+         $(YASM) -f elf64 -o obj/field_5x52_asm.o src/field_5x52_asm.asm
+    to
+         $(YASM) -f win64 -o obj/field_5x52_asm.o src/field_5x52_asm.asm
+
     $ make
-    $ x86_64-w64-mingw32-ranlib *.a
     $ cd ..
 
     Building the dynamic library gave an error, but we only care about the static library.
@@ -70,12 +74,7 @@
     $ git clone https://github.com/CodeShark/cpp-ethereum
     $ cd cpp-ethereum
     $ git checkout mingw32-gcc4.6
-    $ cd ..
-    $ mkdir cpp-ethereum-w64-build
-    $ cd cpp-ethereum-w64-build
-    $ cmake ../cpp-ethereum -DCMAKE_BUILD_TYPE=Release
-    $ make -k VERBOSE=1
-
-9) You should get the following error "x86_64-w64-mingw32-g++: error: unrecognized option `-rdynamic`. Run the following commands:
-    $ cd eth
-    $ x86_64-w64-mingw32-g++   -Wall -std=c++0x -O4 -DNDEBUG    CMakeFiles/eth.dir/main.cpp.o  -o eth -L/usr/x86_64-w64-mingw32/lib ../libethereum/libethereum.a ../../cryptopp562/libcryptopp.a ../../secp256k1/libsecp256k1.a /usr/x86_64-w64-mingw32/lib/libgmp.a -lboost_system-mt-s -lboost_filesystem-mt-s -lboost_chrono-mt-s -lboost_thread_win32-mt-s -lws2_32 -lmswsock -lshlwapi
+    $ cd libethereum
+    $ make
+    $ cd ../eth
+    $ make

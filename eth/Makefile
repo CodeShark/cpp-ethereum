@@ -20,19 +20,18 @@ LIB_PATH += \
 LIBS += \
     -static \
     -lgcc \
-    -lstdc++ \
     -lgdi32 \
-    -lws2_32 \
-    -lmswsock \
     -lethereum \
     -lcryptopp \
-    -lsecp256k1 \
     -lgmp \
+    -lleveldb \
     -lboost_system-mt-s \
     -lboost_filesystem-mt-s \
     -lboost_chrono-mt-s \
-    -lboost_thread_win32-mt-s
-#    -lshlwapi
+    -lboost_thread_win32-mt-s \
+    -lws2_32 \
+    -lmswsock \
+    -lshlwapi
 
 all: eth$(EXE_EXT)
 
