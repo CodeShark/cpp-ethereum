@@ -1,5 +1,5 @@
 #include <boost/detail/endian.hpp>
-#include <chrono>
+#include <boost/chrono.hpp>
 #include <array>
 #if WIN32
 #pragma warning(push)
@@ -14,8 +14,9 @@
 #include <random>
 #include "Common.h"
 #include "Dagger.h"
+#include <boost/chrono.hpp>
 using namespace std;
-using namespace std::chrono;
+using namespace boost::chrono;
 
 namespace eth
 {

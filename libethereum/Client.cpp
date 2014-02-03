@@ -23,12 +23,16 @@
 #include "Client.h"
 using namespace std;
 using namespace eth;
+using namespace boost;
 
 Client::Client(std::string const& _clientVersion, Address _us, std::string const& _dbPath):
 	m_clientVersion(_clientVersion),
 	m_bc(_dbPath),
 	m_stateDB(State::openDB(_dbPath)),
-	m_s(_us, m_stateDB)
+	m_s(_us, m_stateDB),
+        m_net(nullptr),
+        m_workState(Active),
+        m_doMine(false)
 {
 	Defaults::setDBPath(_dbPath);
 
@@ -47,7 +51,7 @@ Client::~Client()
 	if (m_workState == Active)
 		m_workState = Deleting;
 	while (m_workState != Deleted)
-		usleep(10000);
+		boost::this_thread::sleep(boost::posix_time::microseconds(10000));
 }
 
 void Client::startNetwork(short _listenPort, std::string const& _seedHost, short _port, unsigned _verbosity, NodeMode _mode, unsigned _peers, string const& _publicIP)
@@ -142,7 +146,7 @@ void Client::work()
 		}
 	}
 	else
-		usleep(100000);
+		boost::this_thread::sleep(boost::posix_time::microseconds(100000));
 }
 
 void Client::lock()

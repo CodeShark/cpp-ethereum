@@ -65,7 +65,8 @@ int main(int argc, char** argv)
 	KeyPair us = KeyPair::create();
 	Address coinbase = us.address();
 
-	string configFile = string(getenv("HOME")) + "/.ethereum/config.rlp";
+	//string configFile = string(getenv("HOME")) + "/.ethereum/config.rlp";
+        string configFile = "/Users/Eric/ethereum/config.rlp";
 	bytes b = contents(configFile);
 	if (b.size())
 	{
@@ -196,7 +197,7 @@ int main(int argc, char** argv)
 				c.stopMining();
 			else
 				c.startMining();
-			usleep(100000);
+			boost::this_thread::sleep(boost::posix_time::microseconds(100000));
 		}
 	}
 

@@ -26,7 +26,7 @@
 using namespace std;
 using namespace eth;
 
-Transaction::Transaction(bytesConstRef _rlpData)
+void Transaction::init(bytesConstRef _rlpData)
 {
 	RLP rlp(_rlpData);
 	nonce = rlp[0].toInt<u256>(RLP::StrictlyInt);
