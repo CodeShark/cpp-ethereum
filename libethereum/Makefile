@@ -1,0 +1,84 @@
+CXX = x86_64-w64-mingw32-g++
+AR = x86_64-w64-mingw32-ar
+
+CXX_FLAGS = -Wall -std=c++0x
+
+HEADERS = \
+    AddressState.h \
+    BlockChain.h \
+    BlockInfo.h \
+    Client.h \
+    Common.h \
+    Dagger.h \
+    Exceptions.h \
+    Instruction.h \
+    MemTrie.h \
+    PeerNetwork.h \
+    RLP.h \
+    State.h \
+    Transaction.h \
+    TransactionQueue.h \
+    TrieCommon.h \
+    TrieDB.h \
+    TrieHash.h \
+    vector_ref.h
+
+SOURCES = \
+    AddressState.cpp \
+    BlockChain.cpp \
+    BlockInfo.cpp \
+    Client.cpp \
+    Common.cpp \
+    Dagger.cpp \
+    MemTrie.cpp \
+    PeerNetwork.cpp \
+    RLP.cpp \
+    State.cpp \
+    Transaction.cpp \
+    TransactionQueue.cpp \
+    TrieCommon.cpp \
+    TrieDB.cpp \
+    TrieHash.cpp
+
+OBJS = \
+    obj/AddressState.o \
+    obj/BlockChain.o \
+    obj/BlockInfo.o \
+    obj/Client.o \
+    obj/Common.o \
+    obj/Dagger.o \
+    obj/MemTrie.o \
+    obj/PeerNetwork.o \
+    obj/RLP.o \
+    obj/State.o \
+    obj/Transaction.o \
+    obj/TransactionQueue.o \
+    obj/TrieCommon.o \
+    obj/TrieDB.o \
+    obj/TrieHash.o
+
+INCLUDE_PATH += \
+    -I./ \
+    -I/usr/x86_64-w64-ming32/include \
+    -I../../cryptopp562 \
+    -I../../secp256k1/include
+
+#LIBS += \
+    -lboost_system-mt-s \
+    -lboost_filesystem-mt-s \
+    -lboost_chrono-mt-s \
+    -lboost_thread_win32-mt-s \
+    -lws2_32 \
+    -lmswsock \
+    -lshlwapi
+
+all: $(OBJS) lib/libethereum.a
+
+obj/%.o: %.cpp %.h
+	$(CXX) $(CXX_FLAGS) -c -o $@ $< $(INCLUDE_PATH)
+
+lib/libethereum.a: $(OBJS)
+	$(AR) rcs $@ $^	
+
+clean:
+	-rm -f obj/*.o
