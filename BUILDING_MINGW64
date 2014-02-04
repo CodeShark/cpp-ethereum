@@ -1,10 +1,13 @@
-1) Create fresh ubuntu 13.10 VM
+1) Create fresh ubuntu 13.04 VM
 
 2) Install packages
     $ sudo apt-get update && sudo apt-get upgrade
     $ sudo apt-get install build-essential libgmp-dev libgmp3-dev libcrypto++-dev \
         git cmake libboost-all-dev automake libtool libleveldb-dev yasm unzip lzip libminiupnpc-dev \
         mingw-w64 gcc-mingw-w64 g++-mingw-w64 binutils-mingw-w64
+    $ sudo add-apt-repository ppa:ubuntu-toolchain-r/test
+    $ sudo add-apt-repository ppa:rgcjonas/mingw-w64-gcc4.8
+    $ sudo apt-get update && sudo apt-get dist-upgrade
 
 3) Build boost for windows:
     $ wget http://downloads.sourceforge.net/project/boost/boost/1.55.0/boost_1_55_0.tar.bz2
