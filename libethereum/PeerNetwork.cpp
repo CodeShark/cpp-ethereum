@@ -20,7 +20,11 @@
  */
 
 #include <sys/types.h>
+#ifdef WIN32
+#include <winsock.h>
+#else
 #include <ifaddrs.h>
+#endif
 
 #include <chrono>
 #include <miniupnpc/miniupnpc.h>
@@ -762,6 +766,39 @@ void PeerServer::determinePublic(string const& _publicAddress)
 
 void PeerServer::populateAddresses()
 {
+#ifdef WIN32
+	WSAData wsaData;
+	if (WSAStartup(MAKEWORD(1, 1), &wsaData) != 0)
+		throw NoNetworking();
+
+	char ac[80];
+	if (gethostname(ac, sizeof(ac)) == SOCKET_ERROR)
+	{
+		cerr << "Error " << WSAGetLastError() << " when getting local host name." << endl;
+		WSACleanup();
+		throw NoNetworking();
+	}
+
+	struct hostent* phe = gethostbyname(ac);
+	if (phe == 0)
+	{
+		cerr << "Bad host lookup." << endl;
+		WSACleanup();
+		throw NoNetworking();
+	}
+
+	for (int i = 0; phe->h_addr_list[i] != 0; ++i)
+	{
+		struct in_addr addr;
+		memcpy(&addr, phe->h_addr_list[i], sizeof(struct in_addr));
+		m_addresses.push_back(inet_ntoa(addr));
+		if (m_verbosity >= 1)
+			cout << "Address: " << ac << " = " << m_addresses.back() << endl;
+	}
+
+	WSACleanup();
+}
+#else
 	ifaddrs* ifaddr;
 	if (getifaddrs(&ifaddr) == -1)
 		throw NoNetworking();
@@ -790,6 +827,7 @@ void PeerServer::populateAddresses()
 	}
 
 	freeifaddrs(ifaddr);
+#endif
 }
 
 std::vector<bi::tcp::endpoint> PeerServer::potentialPeers()
