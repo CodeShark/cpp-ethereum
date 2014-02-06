@@ -795,14 +795,13 @@ void PeerServer::populateAddresses()
 		struct in_addr addr;
 		memcpy(&addr, phe->h_addr_list[i], sizeof(struct in_addr));
 		char *addrStr = inet_ntoa(addr);
-		bi::address ad;
-		ad.from_string(addrStr);
+		bi::address ad(bi::address::from_string(addrStr));
 		m_addresses.push_back(ad.to_v4());
 		bool isLocal = std::find(c_rejectAddresses.begin(), c_rejectAddresses.end(), ad) != c_rejectAddresses.end();
 		if (isLocal)
 			m_peerAddresses.push_back(ad.to_v4());
 		if (m_verbosity >= 1)
-			cout << "Address: " << ac << " = " << addrStr << " / " << m_addresses.back() << (isLocal ? " [LOCAL]" : " [PEER]") << endl;
+			cout << "Address: " << ac << " = " << m_addresses.back() << (isLocal ? " [LOCAL]" : " [PEER]") << endl;
 	}
 
 	WSACleanup();
