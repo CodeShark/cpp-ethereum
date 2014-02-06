@@ -20,7 +20,6 @@
  */
 
 #include "FileSystem.h"
-#include <string>
 #include <boost/filesystem.hpp>
 
 std::string getDataDir()
