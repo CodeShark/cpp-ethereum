@@ -11,6 +11,7 @@ HEADERS = \
     Common.h \
     Dagger.h \
     Exceptions.h \
+    FileSystem.h \
     Instruction.h \
     MemTrie.h \
     PeerNetwork.h \
@@ -30,6 +31,7 @@ SOURCES = \
     Client.cpp \
     Common.cpp \
     Dagger.cpp \
+    FileSystem.cpp  \
     MemTrie.cpp \
     PeerNetwork.cpp \
     RLP.cpp \
@@ -47,6 +49,7 @@ OBJS = \
     obj/Client.o \
     obj/Common.o \
     obj/Dagger.o \
+    obj/FileSystem.o \
     obj/MemTrie.o \
     obj/PeerNetwork.o \
     obj/RLP.o \
