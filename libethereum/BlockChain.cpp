@@ -30,7 +30,7 @@
 using namespace std;
 using namespace eth;
 
-std::string Defaults::s_dbPath = string(getenv("HOME")) + "/.ethereum";
+std::string Defaults::s_dbPath = "Users/Eric/ethereum";//string(getenv("HOME")) + "/.ethereum";
 
 namespace eth
 {
@@ -62,7 +62,7 @@ bytes BlockDetails::rlp() const
 	return rlpList(number, totalDifficulty, parent, children);
 }
 
-BlockChain::BlockChain(std::string _path, bool _killExisting)
+void BlockChain::init(std::string _path, bool _killExisting)
 {
 	if (_path.empty())
 		_path = Defaults::s_dbPath;

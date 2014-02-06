@@ -19,6 +19,8 @@
  * @date 2014
  */
 
+#define override
+
 #include "Common.h"
 #include "TrieCommon.h"
 #include "MemTrie.h"

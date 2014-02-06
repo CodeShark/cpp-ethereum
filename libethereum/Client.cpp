@@ -30,6 +30,7 @@ Client::Client(std::string const& _clientVersion, Address _us, std::string const
 	m_stateDB(State::openDB(_dbPath)),
 	m_s(_us, m_stateDB)
 {
+	member_init();
 	Defaults::setDBPath(_dbPath);
 
 	// Synchronise the state according to the block chain - i.e. replay all transactions in block chain, in order.
@@ -39,7 +40,7 @@ Client::Client(std::string const& _clientVersion, Address _us, std::string const
 	m_s.sync(m_tq);
 	m_changed = true;
 
-	m_work = new thread([&](){ while (m_workState != Deleting) work(); m_workState = Deleted; });
+	m_work = new boost::thread([&](){ while (m_workState != Deleting) work(); m_workState = Deleted; });
 }
 
 Client::~Client()
@@ -47,7 +48,7 @@ Client::~Client()
 	if (m_workState == Active)
 		m_workState = Deleting;
 	while (m_workState != Deleted)
-		usleep(10000);
+		boost::this_thread::sleep(boost::posix_time::microseconds(10000));
 }
 
 void Client::startNetwork(short _listenPort, std::string const& _seedHost, short _port, unsigned _verbosity, NodeMode _mode, unsigned _peers, string const& _publicIP)
@@ -142,7 +143,7 @@ void Client::work()
 		}
 	}
 	else
-		usleep(100000);
+		boost::this_thread::sleep(boost::posix_time::microseconds(100000));
 }
 
 void Client::lock()

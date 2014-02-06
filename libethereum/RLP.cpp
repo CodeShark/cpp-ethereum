@@ -40,6 +40,7 @@ RLP::iterator& RLP::iterator::operator++()
 }
 
 RLP::iterator::iterator(RLP const& _parent, bool _begin)
+    : m_remaining(0)
 {
 	if (_begin && _parent.isList())
 	{

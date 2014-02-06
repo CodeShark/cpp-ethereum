@@ -20,13 +20,14 @@
  */
 
 #include <sys/types.h>
-#ifdef WIN32
-#include <winsock.h>
+#ifdef _WIN32
+// winsock is already included
+// #include <winsock.h>
 #else
 #include <ifaddrs.h>
 #endif
 
-#include <chrono>
+#include <boost/chrono.hpp>
 #include <miniupnpc/miniupnpc.h>
 #include "Common.h"
 #include "BlockChain.h"
@@ -57,8 +58,8 @@ PeerSession::PeerSession(PeerServer* _s, bi::tcp::socket _socket, uint _rNId):
 	m_reqNetworkId(_rNId),
 	m_rating(0)
 {
-	m_disconnect = std::chrono::steady_clock::time_point::max();
-	m_connect = std::chrono::steady_clock::now();
+	m_disconnect = boost::chrono::steady_clock::time_point::max();
+	m_connect = boost::chrono::steady_clock::now();
 }
 
 PeerSession::~PeerSession()
@@ -101,7 +102,7 @@ bool PeerSession::interpret(RLP const& _r)
 			return false;
 		}
 		try
-			{ m_info = PeerInfo({clientVersion, m_socket.remote_endpoint().address().to_string(), (short)m_socket.remote_endpoint().port(), std::chrono::steady_clock::duration()}); }
+			{ m_info = PeerInfo({clientVersion, m_socket.remote_endpoint().address().to_string(), (short)m_socket.remote_endpoint().port(), boost::chrono::steady_clock::duration()}); }
 		catch (...)
 		{
 			disconnect();
@@ -146,8 +147,8 @@ bool PeerSession::interpret(RLP const& _r)
 		break;
 	}
 	case Pong:
-		m_info.lastPing = std::chrono::steady_clock::now() - m_ping;
-//		cout << "Latency: " << chrono::duration_cast<chrono::milliseconds>(m_lastPing).count() << " ms" << endl;
+		m_info.lastPing = boost::chrono::steady_clock::now() - m_ping;
+//		cout << "Latency: " << boost::chrono::duration_cast<chrono::milliseconds>(m_lastPing).count() << " ms" << endl;
 		break;
 	case GetPeers:
 	{
@@ -363,7 +364,7 @@ void PeerSession::ping()
 {
 	RLPStream s;
 	sealAndSend(prep(s).appendList(1) << Ping);
-	m_ping = std::chrono::steady_clock::now();
+	m_ping = boost::chrono::steady_clock::now();
 }
 
 RLPStream& PeerSession::prep(RLPStream& _s)
@@ -444,13 +445,13 @@ void PeerSession::disconnect()
 {
 	if (m_socket.is_open())
 	{
-		if (m_disconnect == chrono::steady_clock::time_point::max())
+		if (m_disconnect == boost::chrono::steady_clock::time_point::max())
 		{
 			RLPStream s;
 			prep(s);
 			s.appendList(1) << (uint)Disconnect;
 			sealAndSend(s);
-			m_disconnect = chrono::steady_clock::now();
+			m_disconnect = boost::chrono::steady_clock::now();
 		}
 		else
 		{
@@ -542,151 +543,151 @@ void PeerSession::doRead()
 namespace eth {
 struct UPnP
 {
-	UPnP()
-	{
-		ok = false;
+        UPnP()
+        {
+                ok = false;
 
-		struct UPNPDev * devlist;
-		struct UPNPDev * dev;
-		char * descXML;
-		int descXMLsize = 0;
-		int upnperror = 0;
-		printf("TB : init_upnp()\n");
-		memset(&urls, 0, sizeof(struct UPNPUrls));
-		memset(&data, 0, sizeof(struct IGDdatas));
-		devlist = upnpDiscover(2000, NULL/*multicast interface*/, NULL/*minissdpd socket path*/, 0/*sameport*/, 0/*ipv6*/, &upnperror);
-		if (devlist)
-		{
-			dev = devlist;
-			while (dev)
-			{
-				if (strstr (dev->st, "InternetGatewayDevice"))
-					break;
-				dev = dev->pNext;
-			}
-			if (!dev)
-				dev = devlist; /* defaulting to first device */
+                struct UPNPDev * devlist;
+                struct UPNPDev * dev;
+                char * descXML;
+                int descXMLsize = 0;
+                int upnperror = 0;
+                printf("TB : init_upnp()\n");
+                memset(&urls, 0, sizeof(struct UPNPUrls));
+                memset(&data, 0, sizeof(struct IGDdatas));
+                devlist = upnpDiscover(2000, NULL/*multicast interface*/, NULL/*minissdpd socket path*/, 0/*sameport*/, 0/*ipv6*/, &upnperror);
+                if (devlist)
+                {
+                        dev = devlist;
+                        while (dev)
+                        {
+                                if (strstr (dev->st, "InternetGatewayDevice"))
+                                        break;
+                                dev = dev->pNext;
+                        }
+                        if (!dev)
+                                dev = devlist; /* defaulting to first device */
 
-			printf("UPnP device :\n"
-				   " desc: %s\n st: %s\n",
-				   dev->descURL, dev->st);
+                        printf("UPnP device :\n"
+                                   " desc: %s\n st: %s\n",
+                                   dev->descURL, dev->st);
 #if MINIUPNPC_API_VERSION >= 9
-			descXML = (char*)miniwget(dev->descURL, &descXMLsize, 0);
+                        descXML = (char*)miniwget(dev->descURL, &descXMLsize, 0);
 #else
-			descXML = (char*)miniwget(dev->descURL, &descXMLsize);
+                        descXML = (char*)miniwget(dev->descURL, &descXMLsize);
 #endif
-			if (descXML)
-			{
-				parserootdesc (descXML, descXMLsize, &data);
-				free (descXML); descXML = 0;
+                        if (descXML)
+                        {
+                                parserootdesc (descXML, descXMLsize, &data);
+                                free (descXML); descXML = 0;
 #if MINIUPNPC_API_VERSION >= 9
-				GetUPNPUrls (&urls, &data, dev->descURL, 0);
+                                GetUPNPUrls (&urls, &data, dev->descURL, 0);
 #else
-				GetUPNPUrls (&urls, &data, dev->descURL);
+                                GetUPNPUrls (&urls, &data, dev->descURL);
 #endif
-				ok = true;
-			}
-			freeUPNPDevlist(devlist);
-		}
-		else
-		{
-			/* error ! */
-		}
-	}
-	~UPnP()
-	{
-		auto r = m_reg;
-		for (auto i: r)
-			removeRedirect(i);
-	}
+                                ok = true;
+                        }
+                        freeUPNPDevlist(devlist);
+                }
+                else
+                {
+                        /* error ! */
+                }
+        }
+        ~UPnP()
+        {
+                auto r = m_reg;
+                for (auto i: r)
+                        removeRedirect(i);
+        }
 
-	string externalIP()
-	{
-		char addr[16];
-		UPNP_GetExternalIPAddress(urls.controlURL, data.first.servicetype, addr);
-		return addr;
-	}
+        string externalIP()
+        {
+                char addr[16];
+                UPNP_GetExternalIPAddress(urls.controlURL, data.first.servicetype, addr);
+                return addr;
+        }
 
-	int addRedirect(char const* addr, int port)
-	{
-		char port_str[16];
-		int r;
-		printf("TB : upnp_add_redir (%d)\n", port);
-		if (urls.controlURL[0] == '\0')
-		{
-			printf("TB : the init was not done !\n");
-			return -1;
-		}
-		sprintf(port_str, "%d", port);
-		r = UPNP_AddPortMapping(urls.controlURL, data.first.servicetype, port_str, port_str, addr, "ethereum", "TCP", NULL, NULL);
-		if (r)
-		{
-			printf("AddPortMapping(%s, %s, %s) failed with %d. Trying non-specific external port...\n", port_str, port_str, addr, r);
-			r = UPNP_AddPortMapping(urls.controlURL, data.first.servicetype, port_str, NULL, addr, "ethereum", "TCP", NULL, NULL);
-		}
-		if (r)
-		{
-			printf("AddPortMapping(%s, NULL, %s) failed with %d. Trying non-specific internal port...\n", port_str, addr, r);
-			r = UPNP_AddPortMapping(urls.controlURL, data.first.servicetype, NULL, port_str, addr, "ethereum", "TCP", NULL, NULL);
-		}
-		if (r)
-		{
-			printf("AddPortMapping(NULL, %s, %s) failed with %d. Trying non-specific both ports...\n", port_str, addr, r);
-			r = UPNP_AddPortMapping(urls.controlURL, data.first.servicetype, NULL, NULL, addr, "ethereum", "TCP", NULL, NULL);
-		}
-		if (r)
-			printf("AddPortMapping(NULL, NULL, %s) failed with %d\n", addr, r);
-		else
-		{
-			unsigned num = 0;
-			UPNP_GetPortMappingNumberOfEntries(urls.controlURL, data.first.servicetype, &num);
-			for (unsigned i = 0; i < num; ++i)
-			{
-				char extPort[16];
-				char intClient[16];
-				char intPort[6];
-				char protocol[4];
-				char desc[80];
-				char enabled[4];
-				char rHost[64];
-				char duration[16];
-				UPNP_GetGenericPortMappingEntry(urls.controlURL, data.first.servicetype, toString(i).c_str(), extPort, intClient, intPort, protocol, desc, enabled, rHost, duration);
-				if (string("ethereum") == desc)
-				{
-					m_reg.insert(atoi(extPort));
-					return atoi(extPort);
-				}
-			}
-			cerr << "ERROR: Mapped port not found." << endl;
-		}
-		return 0;
-	}
+        int addRedirect(char const* addr, int port)
+        {
+                char port_str[16];
+                int r;
+                printf("TB : upnp_add_redir (%d)\n", port);
+                if (urls.controlURL[0] == '\0')
+                {
+                        printf("TB : the init was not done !\n");
+                        return -1;
+                }
+                sprintf(port_str, "%d", port);
+                r = UPNP_AddPortMapping(urls.controlURL, data.first.servicetype, port_str, port_str, addr, "ethereum", "TCP", NULL, NULL);
+                if (r)
+                {
+                        printf("AddPortMapping(%s, %s, %s) failed with %d. Trying non-specific external port...\n", port_str, port_str, addr, r);
+                        r = UPNP_AddPortMapping(urls.controlURL, data.first.servicetype, port_str, NULL, addr, "ethereum", "TCP", NULL, NULL);
+                }
+                if (r)
+                {
+                        printf("AddPortMapping(%s, NULL, %s) failed with %d. Trying non-specific internal port...\n", port_str, addr, r);
+                        r = UPNP_AddPortMapping(urls.controlURL, data.first.servicetype, NULL, port_str, addr, "ethereum", "TCP", NULL, NULL);
+                }
+                if (r)
+                {
+                        printf("AddPortMapping(NULL, %s, %s) failed with %d. Trying non-specific both ports...\n", port_str, addr, r);
+                        r = UPNP_AddPortMapping(urls.controlURL, data.first.servicetype, NULL, NULL, addr, "ethereum", "TCP", NULL, NULL);
+                }
+                if (r)
+                        printf("AddPortMapping(NULL, NULL, %s) failed with %d\n", addr, r);
+                else
+                {
+                        unsigned num = 0;
+                        UPNP_GetPortMappingNumberOfEntries(urls.controlURL, data.first.servicetype, &num);
+                        for (unsigned i = 0; i < num; ++i)
+                        {
+                                char extPort[16];
+                                char intClient[16];
+                                char intPort[6];
+                                char protocol[4];
+                                char desc[80];
+                                char enabled[4];
+                                char rHost[64];
+                                char duration[16];
+                                UPNP_GetGenericPortMappingEntry(urls.controlURL, data.first.servicetype, toString(i).c_str(), extPort, intClient, intPort, protocol, desc, enabled, rHost, duration);
+                                if (string("ethereum") == desc)
+                                {
+                                        m_reg.insert(atoi(extPort));
+                                        return atoi(extPort);
+                                }
+                        }
+                        cerr << "ERROR: Mapped port not found." << endl;
+                }
+                return 0;
+        }
 
-	void removeRedirect(int port)
-	{
-		char port_str[16];
-//		int t;
-		printf("TB : upnp_rem_redir (%d)\n", port);
-		if (urls.controlURL[0] == '\0')
-		{
-			printf("TB : the init was not done !\n");
-			return;
-		}
-		sprintf(port_str, "%d", port);
-		UPNP_DeletePortMapping(urls.controlURL, data.first.servicetype, port_str, "TCP", NULL);
-		m_reg.erase(port);
-	}
+        void removeRedirect(int port)
+        {
+                char port_str[16];
+//              int t;
+                printf("TB : upnp_rem_redir (%d)\n", port);
+                if (urls.controlURL[0] == '\0')
+                {
+                        printf("TB : the init was not done !\n");
+                        return;
+                }
+                sprintf(port_str, "%d", port);
+                UPNP_DeletePortMapping(urls.controlURL, data.first.servicetype, port_str, "TCP", NULL);
+                m_reg.erase(port);
+        }
 
-	bool isValid() const
-	{
-		return ok;
-	}
+        bool isValid() const
+        {
+                return ok;
+        }
 
-	set<int> m_reg;
+        set<int> m_reg;
 
-	bool ok;
-	struct UPNPUrls urls;
-	struct IGDdatas data;
+        bool ok;
+        struct UPNPUrls urls;
+        struct IGDdatas data;
 };
 }
 
@@ -701,6 +702,7 @@ PeerServer::PeerServer(std::string const& _clientVersion, BlockChain const& _ch,
 	m_socket(m_ioService),
 	m_requiredNetworkId(_networkId)
 {
+	member_init();
 	populateAddresses();
 	determinePublic(_publicAddress);
 	ensureAccepting();
@@ -715,6 +717,7 @@ PeerServer::PeerServer(std::string const& _clientVersion, uint _networkId):
 	m_socket(m_ioService),
 	m_requiredNetworkId(_networkId)
 {
+	member_init();
 	// populate addresses.
 	populateAddresses();
 	if (m_verbosity)
@@ -726,7 +729,7 @@ PeerServer::~PeerServer()
 	for (auto const& i: m_peers)
 		if (auto p = i.lock())
 			p->disconnect();
-	delete m_upnp;
+	//delete m_upnp;
 }
 
 void PeerServer::determinePublic(string const& _publicAddress)
@@ -766,7 +769,7 @@ void PeerServer::determinePublic(string const& _publicAddress)
 
 void PeerServer::populateAddresses()
 {
-#ifdef WIN32
+#ifdef _WIN32
 	WSAData wsaData;
 	if (WSAStartup(MAKEWORD(1, 1), &wsaData) != 0)
 		throw NoNetworking();
@@ -791,13 +794,18 @@ void PeerServer::populateAddresses()
 	{
 		struct in_addr addr;
 		memcpy(&addr, phe->h_addr_list[i], sizeof(struct in_addr));
-		m_addresses.push_back(inet_ntoa(addr));
+		char *addrStr = inet_ntoa(addr);
+		bi::address ad;
+		ad.from_string(addrStr);
+		m_addresses.push_back(ad.to_v4());
+		bool isLocal = std::find(c_rejectAddresses.begin(), c_rejectAddresses.end(), ad) != c_rejectAddresses.end();
+		if (isLocal)
+			m_peerAddresses.push_back(ad.to_v4());
 		if (m_verbosity >= 1)
-			cout << "Address: " << ac << " = " << m_addresses.back() << endl;
+			cout << "Address: " << ac << " = " << addrStr << " / " << m_addresses.back() << (isLocal ? " [LOCAL]" : " [PEER]") << endl;
 	}
 
 	WSACleanup();
-}
 #else
 	ifaddrs* ifaddr;
 	if (getifaddrs(&ifaddr) == -1)
@@ -907,8 +915,8 @@ bool PeerServer::process(BlockChain& _bc)
 	bool ret = false;
 	m_ioService.poll();
 
-	auto n = chrono::steady_clock::now();
-	bool fullProcess = (n > m_lastFullProcess + chrono::seconds(1));
+	auto n = boost::chrono::steady_clock::now();
+	bool fullProcess = (n > m_lastFullProcess + boost::chrono::seconds(1));
 	if (fullProcess)
 		m_lastFullProcess = n;
 
@@ -917,7 +925,7 @@ bool PeerServer::process(BlockChain& _bc)
 		{
 			auto p = i->lock();
 			if (p && p->m_socket.is_open() &&
-					(p->m_disconnect == chrono::steady_clock::time_point::max() || chrono::steady_clock::now() - p->m_disconnect < chrono::seconds(1)))	// kill old peers that should be disconnected.
+					(p->m_disconnect == boost::chrono::steady_clock::time_point::max() || boost::chrono::steady_clock::now() - p->m_disconnect < boost::chrono::seconds(1)))	// kill old peers that should be disconnected.
 				++i;
 			else
 			{
@@ -941,13 +949,13 @@ bool PeerServer::process(BlockChain& _bc, TransactionQueue& _tq, Overlay& _o)
 
 		for (auto const& i: _tq.transactions())
 			m_transactionsSent.insert(i.first);
-		m_lastPeersRequest = chrono::steady_clock::time_point::min();
-		m_lastFullProcess = chrono::steady_clock::time_point::min();
+		m_lastPeersRequest = boost::chrono::steady_clock::time_point::min();
+		m_lastFullProcess = boost::chrono::steady_clock::time_point::min();
 		ret = true;
 	}
 
-	auto n = chrono::steady_clock::now();
-	bool fullProcess = (n > m_lastFullProcess + chrono::seconds(1));
+	auto n = boost::chrono::steady_clock::now();
+	bool fullProcess = (n > m_lastFullProcess + boost::chrono::seconds(1));
 
 	if (process(_bc))
 		ret = true;
@@ -1043,7 +1051,7 @@ bool PeerServer::process(BlockChain& _bc, TransactionQueue& _tq, Overlay& _o)
 			{
 				if (m_incomingPeers.empty())
 				{
-					if (chrono::steady_clock::now() > m_lastPeersRequest + chrono::seconds(10))
+					if (boost::chrono::steady_clock::now() > m_lastPeersRequest + boost::chrono::seconds(10))
 					{
 						RLPStream s;
 						bytes b;
@@ -1052,7 +1060,7 @@ bool PeerServer::process(BlockChain& _bc, TransactionQueue& _tq, Overlay& _o)
 						for (auto const& i: m_peers)
 							if (auto p = i.lock())
 								p->send(&b);
-						m_lastPeersRequest = chrono::steady_clock::now();
+						m_lastPeersRequest = boost::chrono::steady_clock::now();
 					}
 
 
@@ -1083,7 +1091,7 @@ bool PeerServer::process(BlockChain& _bc, TransactionQueue& _tq, Overlay& _o)
 				unsigned agedPeers = 0;
 				for (auto i: m_peers)
 					if (auto p = i.lock())
-						if ((m_mode != NodeMode::PeerServer || p->m_caps != 0x01) && chrono::steady_clock::now() > p->m_connect + chrono::milliseconds(old))	// don't throw off new peers; peer-servers should never kick off other peer-servers.
+						if ((m_mode != NodeMode::PeerServer || p->m_caps != 0x01) && boost::chrono::steady_clock::now() > p->m_connect + boost::chrono::milliseconds(old))	// don't throw off new peers; peer-servers should never kick off other peer-servers.
 						{
 							++agedPeers;
 							if ((!worst || p->m_rating < worst->m_rating || (p->m_rating == worst->m_rating && p->m_connect > worst->m_connect)))	// kill older ones
@@ -1101,7 +1109,7 @@ bool PeerServer::process(BlockChain& _bc, TransactionQueue& _tq, Overlay& _o)
 std::vector<PeerInfo> PeerServer::peers() const
 {
 	const_cast<PeerServer*>(this)->pingAll();
-	usleep(200000);
+	boost::this_thread::sleep(boost::posix_time::microseconds(200000));
 	std::vector<PeerInfo> ret;
 	for (auto& i: m_peers)
 		if (auto j = i.lock())

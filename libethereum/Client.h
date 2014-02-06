@@ -21,8 +21,8 @@
 
 #pragma once
 
-#include <thread>
-#include <mutex>
+#include <boost/thread.hpp>
+#include <boost/thread/mutex.hpp>
 #include "Common.h"
 #include "BlockChain.h"
 #include "TransactionQueue.h"
@@ -78,14 +78,21 @@ private:
 	TransactionQueue m_tq;				///< Maintains list of incoming transactions not yet on the block chain.
 	Overlay m_stateDB;					///< Acts as the central point for the state database, so multiple States can share it.
 	State m_s;							///< The present state of the client.
-	PeerServer* m_net = nullptr;		///< Should run in background and send us events when blocks found and allow us to send blocks as required.
-	std::thread* m_work;				///< The work thread.
-	std::mutex m_lock;
-	enum { Active = 0, Deleting, Deleted } m_workState = Active;
-	bool m_doMine = false;				///< Are we supposed to be mining?
+	PeerServer* m_net;// = nullptr;		///< Should run in background and send us events when blocks found and allow us to send blocks as required.
+	boost::thread* m_work;				///< The work thread.
+	boost::mutex m_lock;
+	enum { Active = 0, Deleting, Deleted } m_workState;// = Active;
+	bool m_doMine;// = false;				///< Are we supposed to be mining?
 	MineProgress m_mineProgress;
 
 	mutable bool m_changed;
+
+	void member_init()
+	{
+		m_net = nullptr;
+		m_workState = Active;
+		m_doMine = false;
+	}
 };
 
 }
