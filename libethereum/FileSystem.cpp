@@ -40,7 +40,7 @@ std::string getDataDir()
 	if (homeDir == NULL || strlen(homeDir) == 0)
 		dataDirPath = boost::filesystem::path("/");
 	else
-		datadir = boost::filesystem::path(homeDir);
+		dataDirPath = boost::filesystem::path(homeDir);
 #if defined(__APPLE__) && defined(__MACH__)
 	dataDirPath /= "Library/Application Support";
 	boost::filesystem::create_directory(dataDirPath);
