@@ -63,7 +63,7 @@ bytes BlockDetails::rlp() const
 	return rlpList(number, totalDifficulty, parent, children);
 }
 
-BlockChain::BlockChain(std::string _path, bool _killExisting)
+void BlockChain::delegateConstructor(std::string _path, bool _killExisting)
 {
 	if (_path.empty())
 		_path = Defaults::get()->m_dbPath;

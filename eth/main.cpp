@@ -134,7 +134,7 @@ int main(int argc, char** argv)
 				mining = ~(eth::uint)0;
 			else if (isFalse(m))
 				mining = 0;
-			else if (int i = stoi(m))
+			else if (int i = strtol(m.c_str(), NULL, 10))
 				mining = i;
 			else
 			{
@@ -236,7 +236,7 @@ int main(int argc, char** argv)
 				c.stopMining();
 			else
 				c.startMining();
-			usleep(100000);
+			boost::this_thread::sleep(boost::posix_time::microseconds(100000));
 		}
 	}
 

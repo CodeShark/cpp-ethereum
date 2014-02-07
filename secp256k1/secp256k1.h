@@ -8,7 +8,7 @@ extern "C" {
 /** Initialize the library. This may take some time (10-100 ms).
  *  You need to call this before calling any other function.
  *  It cannot run in parallel with any other functions, but once
- *  secp256k1_start() returns, all other functions are thread-safe.
+ *  secp256k1_start() returns, all other functions are boost::thread-safe.
  */
 void secp256k1_start(void);
 

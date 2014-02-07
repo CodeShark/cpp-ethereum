@@ -37,9 +37,13 @@ struct Signature
 // [ nonce, receiving_address, value, fee, [ data item 0, data item 1 ... data item n ], v, r, s ]
 struct Transaction
 {
+private:
+	void delegateConstructor(bytesConstRef _rlp);
+
+public:
 	Transaction() {}
-	Transaction(bytesConstRef _rlp);
-	Transaction(bytes const& _rlp): Transaction(&_rlp) {}
+	Transaction(bytesConstRef _rlp) { delegateConstructor(_rlp); }
+	Transaction(bytes const& _rlp) { delegateConstructor(&_rlp); }
 
 	u256 nonce;
 	Address receiveAddress;
@@ -60,7 +64,7 @@ struct Transaction
 	bytes sha3Bytes(bool _sig = true) const { RLPStream s; fillStream(s, _sig); return eth::sha3Bytes(s.out()); }
 };
 
-using Transactions = std::vector<Transaction>;
+typedef  std::vector<Transaction> Transactions ;
 
 }
 

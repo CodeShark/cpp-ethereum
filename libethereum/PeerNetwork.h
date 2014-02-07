@@ -25,7 +25,7 @@
 #include <utility>
 #include <boost/asio.hpp>
 #include <boost/asio/ip/tcp.hpp>
-#include <thread>
+#include <boost/thread.hpp>
 #include "RLP.h"
 #include "Common.h"
 namespace ba = boost::asio;
@@ -67,7 +67,7 @@ struct PeerInfo
 	std::string clientVersion;
 	std::string host;
 	short port;
-	std::chrono::steady_clock::duration lastPing;
+	boost::chrono::steady_clock::duration lastPing;
 };
 
 class PeerSession: public std::enable_shared_from_this<PeerSession>
@@ -108,9 +108,9 @@ private:
 	short m_listenPort;			///< Port that the remote client is listening on for connections. Useful for giving to peers.
 	uint m_caps;
 
-	std::chrono::steady_clock::time_point m_ping;
-	std::chrono::steady_clock::time_point m_connect;
-	std::chrono::steady_clock::time_point m_disconnect;
+	boost::chrono::steady_clock::time_point m_ping;
+	boost::chrono::steady_clock::time_point m_connect;
+	boost::chrono::steady_clock::time_point m_disconnect;
 
 	unsigned m_rating;
 	bool m_requireTransactions;
@@ -144,7 +144,7 @@ public:
 
 	/// Sync with the BlockChain. It might contain one of our mined blocks, we might have new candidates from the network.
 	/// Conduct I/O, polling, syncing, whatever.
-	/// Ideally all time-consuming I/O is done in a background thread or otherwise asynchronously, but you get this call every 100ms or so anyway.
+	/// Ideally all time-consuming I/O is done in a background boost::thread or otherwise asynchronously, but you get this call every 100ms or so anyway.
 	bool process(BlockChain& _bc, TransactionQueue&, Overlay& _o);
 	bool process(BlockChain& _bc);
 
@@ -173,16 +173,16 @@ private:
 	std::vector<bi::tcp::endpoint> potentialPeers();
 
 	std::string m_clientVersion;
-	NodeMode m_mode = NodeMode::Full;
+	NodeMode m_mode;// = NodeMode::Full;
 
 	short m_listenPort;
 
-	BlockChain const* m_chain = nullptr;
+	BlockChain const* m_chain;// = nullptr;
 	ba::io_service m_ioService;
 	bi::tcp::acceptor m_acceptor;
 	bi::tcp::socket m_socket;
 
-	UPnP* m_upnp = nullptr;
+	UPnP* m_upnp;// = nullptr;
 	bi::tcp::endpoint m_public;
 
 	uint m_requiredNetworkId;
@@ -195,15 +195,15 @@ private:
 	h256 m_latestBlockSent;
 	std::set<h256> m_transactionsSent;
 
-	std::chrono::steady_clock::time_point m_lastPeersRequest;
-	unsigned m_idealPeerCount = 5;
+	boost::chrono::steady_clock::time_point m_lastPeersRequest;
+	unsigned m_idealPeerCount;// = 5;
 
-	std::chrono::steady_clock::time_point m_lastFullProcess;
+	boost::chrono::steady_clock::time_point m_lastFullProcess;
 
 	std::vector<bi::address_v4> m_addresses;
 	std::vector<bi::address_v4> m_peerAddresses;
 
-	bool m_accepting = false;
+	bool m_accepting;// = false;
 };
 
 

@@ -29,7 +29,7 @@
 #include <ifaddrs.h>
 #endif
 
-#include <chrono>
+#include <boost/chrono.hpp>
 #include "Exceptions.h"
 #include "Common.h"
 #include "BlockChain.h"
@@ -63,8 +63,8 @@ PeerSession::PeerSession(PeerServer* _s, bi::tcp::socket _socket, uint _rNId):
 	m_reqNetworkId(_rNId),
 	m_rating(0)
 {
-	m_disconnect = std::chrono::steady_clock::time_point::max();
-	m_connect = std::chrono::steady_clock::now();
+	m_disconnect = boost::chrono::steady_clock::time_point::max();
+	m_connect = boost::chrono::steady_clock::now();
 }
 
 PeerSession::~PeerSession()
@@ -105,7 +105,7 @@ bool PeerSession::interpret(RLP const& _r)
 			return false;
 		}
 		try
-			{ m_info = PeerInfo({clientVersion, m_socket.remote_endpoint().address().to_string(), (short)m_socket.remote_endpoint().port(), std::chrono::steady_clock::duration()}); }
+			{ m_info = PeerInfo({clientVersion, m_socket.remote_endpoint().address().to_string(), (short)m_socket.remote_endpoint().port(), boost::chrono::steady_clock::duration()}); }
 		catch (...)
 		{
 			disconnect();
@@ -146,8 +146,8 @@ bool PeerSession::interpret(RLP const& _r)
 		break;
 	}
 	case PongPacket:
-		m_info.lastPing = std::chrono::steady_clock::now() - m_ping;
-//		clogS(NetMessageSummary) << "Latency: " << chrono::duration_cast<chrono::milliseconds>(m_lastPing).count() << " ms";
+		m_info.lastPing = boost::chrono::steady_clock::now() - m_ping;
+//		clogS(NetMessageSummary) << "Latency: " << boost::chrono::duration_cast<boost::chrono::milliseconds>(m_lastPing).count() << " ms";
 		break;
 	case GetPeersPacket:
 	{
@@ -346,7 +346,7 @@ void PeerSession::ping()
 {
 	RLPStream s;
 	sealAndSend(prep(s).appendList(1) << PingPacket);
-	m_ping = std::chrono::steady_clock::now();
+	m_ping = boost::chrono::steady_clock::now();
 }
 
 RLPStream& PeerSession::prep(RLPStream& _s)
@@ -420,13 +420,13 @@ void PeerSession::disconnect()
 {
 	if (m_socket.is_open())
 	{
-		if (m_disconnect == chrono::steady_clock::time_point::max())
+		if (m_disconnect == boost::chrono::steady_clock::time_point::max())
 		{
 			RLPStream s;
 			prep(s);
 			s.appendList(1) << DisconnectPacket;
 			sealAndSend(s);
-			m_disconnect = chrono::steady_clock::now();
+			m_disconnect = boost::chrono::steady_clock::now();
 		}
 		else
 		{
@@ -510,7 +510,10 @@ PeerServer::PeerServer(std::string const& _clientVersion, BlockChain const& _ch,
 	m_chain(&_ch),
 	m_acceptor(m_ioService, bi::tcp::endpoint(bi::tcp::v4(), _port)),
 	m_socket(m_ioService),
-	m_requiredNetworkId(_networkId)
+	m_upnp(nullptr),
+	m_requiredNetworkId(_networkId),
+	m_idealPeerCount(5),
+	m_accepting(false)
 {
 	populateAddresses();
 	determinePublic(_publicAddress, _upnp);
@@ -520,10 +523,15 @@ PeerServer::PeerServer(std::string const& _clientVersion, BlockChain const& _ch,
 
 PeerServer::PeerServer(std::string const& _clientVersion, uint _networkId):
 	m_clientVersion(_clientVersion),
+	m_mode(NodeMode::Full),
 	m_listenPort(-1),
+	m_chain(nullptr),
 	m_acceptor(m_ioService, bi::tcp::endpoint(bi::tcp::v4(), 0)),
 	m_socket(m_ioService),
-	m_requiredNetworkId(_networkId)
+	m_upnp(nullptr),
+	m_requiredNetworkId(_networkId),
+	m_idealPeerCount(5),
+	m_accepting(false)
 {
 	// populate addresses.
 	populateAddresses();
@@ -719,8 +727,8 @@ bool PeerServer::process(BlockChain& _bc)
 	bool ret = false;
 	m_ioService.poll();
 
-	auto n = chrono::steady_clock::now();
-	bool fullProcess = (n > m_lastFullProcess + chrono::seconds(1));
+	auto n = boost::chrono::steady_clock::now();
+	bool fullProcess = (n > m_lastFullProcess + boost::chrono::seconds(1));
 	if (fullProcess)
 		m_lastFullProcess = n;
 
@@ -729,7 +737,7 @@ bool PeerServer::process(BlockChain& _bc)
 		{
 			auto p = i->lock();
 			if (p && p->m_socket.is_open() &&
-					(p->m_disconnect == chrono::steady_clock::time_point::max() || chrono::steady_clock::now() - p->m_disconnect < chrono::seconds(1)))	// kill old peers that should be disconnected.
+					(p->m_disconnect == boost::chrono::steady_clock::time_point::max() || boost::chrono::steady_clock::now() - p->m_disconnect < boost::chrono::seconds(1)))	// kill old peers that should be disconnected.
 				++i;
 			else
 			{
@@ -752,13 +760,13 @@ bool PeerServer::process(BlockChain& _bc, TransactionQueue& _tq, Overlay& _o)
 
 		for (auto const& i: _tq.transactions())
 			m_transactionsSent.insert(i.first);
-		m_lastPeersRequest = chrono::steady_clock::time_point::min();
-		m_lastFullProcess = chrono::steady_clock::time_point::min();
+		m_lastPeersRequest = boost::chrono::steady_clock::time_point::min();
+		m_lastFullProcess = boost::chrono::steady_clock::time_point::min();
 		ret = true;
 	}
 
-	auto n = chrono::steady_clock::now();
-	bool fullProcess = (n > m_lastFullProcess + chrono::seconds(1));
+	auto n = boost::chrono::steady_clock::now();
+	bool fullProcess = (n > m_lastFullProcess + boost::chrono::seconds(1));
 
 	if (process(_bc))
 		ret = true;
@@ -854,7 +862,7 @@ bool PeerServer::process(BlockChain& _bc, TransactionQueue& _tq, Overlay& _o)
 			{
 				if (m_incomingPeers.empty())
 				{
-					if (chrono::steady_clock::now() > m_lastPeersRequest + chrono::seconds(10))
+					if (boost::chrono::steady_clock::now() > m_lastPeersRequest + boost::chrono::seconds(10))
 					{
 						RLPStream s;
 						bytes b;
@@ -863,7 +871,7 @@ bool PeerServer::process(BlockChain& _bc, TransactionQueue& _tq, Overlay& _o)
 						for (auto const& i: m_peers)
 							if (auto p = i.lock())
 								p->send(&b);
-						m_lastPeersRequest = chrono::steady_clock::now();
+						m_lastPeersRequest = boost::chrono::steady_clock::now();
 					}
 
 
@@ -894,7 +902,7 @@ bool PeerServer::process(BlockChain& _bc, TransactionQueue& _tq, Overlay& _o)
 				unsigned agedPeers = 0;
 				for (auto i: m_peers)
 					if (auto p = i.lock())
-						if ((m_mode != NodeMode::PeerServer || p->m_caps != 0x01) && chrono::steady_clock::now() > p->m_connect + chrono::milliseconds(old))	// don't throw off new peers; peer-servers should never kick off other peer-servers.
+						if ((m_mode != NodeMode::PeerServer || p->m_caps != 0x01) && boost::chrono::steady_clock::now() > p->m_connect + boost::chrono::milliseconds(old))	// don't throw off new peers; peer-servers should never kick off other peer-servers.
 						{
 							++agedPeers;
 							if ((!worst || p->m_rating < worst->m_rating || (p->m_rating == worst->m_rating && p->m_connect > worst->m_connect)))	// kill older ones
@@ -912,7 +920,7 @@ bool PeerServer::process(BlockChain& _bc, TransactionQueue& _tq, Overlay& _o)
 std::vector<PeerInfo> PeerServer::peers() const
 {
 	const_cast<PeerServer*>(this)->pingAll();
-	usleep(200000);
+	boost::this_thread::sleep(boost::posix_time::microseconds(200000));
 	std::vector<PeerInfo> ret;
 	for (auto& i: m_peers)
 		if (auto j = i.lock())

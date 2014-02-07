@@ -32,7 +32,7 @@ public:
 
 #else
 
-/// Functions are not re-entrant. If you want to multi-thread, then use different classes for each thread.
+/// Functions are not re-entrant. If you want to multi-thread, then use different classes for each boost::thread.
 class Dagger
 {
 public:

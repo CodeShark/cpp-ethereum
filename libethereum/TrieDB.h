@@ -106,7 +106,7 @@ class GenericTrieDB
 public:
 	GenericTrieDB(DB* _db): m_db(_db) {}
 	GenericTrieDB(DB* _db, h256 _root) { open(_db, _root); }
-	~GenericTrieDB() {}
+	~GenericTrieDB() { initMembers(); }
 
 	void open(DB* _db, h256 _root) { setRoot(_root); m_db = _db; assert(node(m_root).size()); }
 
@@ -124,7 +124,7 @@ public:
 	class iterator
 	{
 	public:
-		using value_type = std::pair<bytesConstRef, bytesConstRef>;
+		typedef  std::pair<bytesConstRef, bytesConstRef> value_type ;
 
 		iterator() {}
 		iterator(GenericTrieDB const* _db)
@@ -330,7 +330,12 @@ private:
 	void killNode(RLP const& _d) { if (_d.data().size() >= 32) killNode(sha3(_d.data())); }
 
 	h256 m_root;
-	DB* m_db = nullptr;
+	DB* m_db;// = nullptr;
+
+	void initMembers()
+	{
+		m_db = nullptr;
+	}
 };
 
 template <class DB>
@@ -362,8 +367,8 @@ public:
 	class iterator: public GenericTrieDB<DB>::iterator
 	{
 	public:
-		using Super = typename GenericTrieDB<DB>::iterator;
-		using value_type = std::pair<KeyType, bytesConstRef>;
+		typedef  typename GenericTrieDB<DB>::iterator Super ;
+		typedef  std::pair<KeyType, bytesConstRef> value_type ;
 
 		iterator() {}
 		iterator(TrieDB const* _db): Super(_db) {}

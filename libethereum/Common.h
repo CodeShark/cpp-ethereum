@@ -29,7 +29,7 @@
 #endif
 
 #include <ctime>
-#include <chrono>
+#include <boost/chrono.hpp>
 #include <array>
 #include <map>
 #include <set>
@@ -45,23 +45,23 @@ namespace eth
 {
 
 // Binary data types.
-using byte = uint8_t;
-using bytes = std::vector<byte>;
-using bytesRef = vector_ref<byte>;
-using bytesConstRef = vector_ref<byte const>;
+typedef  uint8_t byte ;
+typedef  std::vector<byte> bytes ;
+typedef  vector_ref<byte> bytesRef ;
+typedef  vector_ref<byte const> bytesConstRef ;
 
 // Numeric types.
-using bigint = boost::multiprecision::number<boost::multiprecision::cpp_int_backend<>>;
-using u256 =  boost::multiprecision::number<boost::multiprecision::cpp_int_backend<256, 256, boost::multiprecision::unsigned_magnitude, boost::multiprecision::unchecked, void>>;
-using s256 =  boost::multiprecision::number<boost::multiprecision::cpp_int_backend<256, 256, boost::multiprecision::signed_magnitude, boost::multiprecision::unchecked, void>>;
-using u160 =  boost::multiprecision::number<boost::multiprecision::cpp_int_backend<160, 160, boost::multiprecision::unsigned_magnitude, boost::multiprecision::unchecked, void>>;
-using s160 =  boost::multiprecision::number<boost::multiprecision::cpp_int_backend<160, 160, boost::multiprecision::signed_magnitude, boost::multiprecision::unchecked, void>>;
-using uint = uint64_t;
-using sint = int64_t;
-using u256s = std::vector<u256>;
-using u160s = std::vector<u160>;
-using u256Set = std::set<u256>;
-using u160Set = std::set<u160>;
+typedef  boost::multiprecision::number<boost::multiprecision::cpp_int_backend<>> bigint ;
+typedef   boost::multiprecision::number<boost::multiprecision::cpp_int_backend<256, 256, boost::multiprecision::unsigned_magnitude, boost::multiprecision::unchecked, void>> u256 ;
+typedef   boost::multiprecision::number<boost::multiprecision::cpp_int_backend<256, 256, boost::multiprecision::signed_magnitude, boost::multiprecision::unchecked, void>> s256 ;
+typedef   boost::multiprecision::number<boost::multiprecision::cpp_int_backend<160, 160, boost::multiprecision::unsigned_magnitude, boost::multiprecision::unchecked, void>> u160 ;
+typedef   boost::multiprecision::number<boost::multiprecision::cpp_int_backend<160, 160, boost::multiprecision::signed_magnitude, boost::multiprecision::unchecked, void>> s160 ;
+typedef  uint64_t uint ;
+typedef  int64_t sint ;
+typedef  std::vector<u256> u256s ;
+typedef  std::vector<u160> u160s ;
+typedef  std::set<u256> u256Set ;
+typedef  std::set<u160> u160Set ;
 
 template <class T, class Out> inline void toBigEndian(T _val, Out& o_out);
 template <class T, class In> inline T fromBigEndian(In const& _bytes);
@@ -69,7 +69,7 @@ template <class T, class In> inline T fromBigEndian(In const& _bytes);
 template <unsigned N>
 class FixedHash
 {
-	using Arith = boost::multiprecision::number<boost::multiprecision::cpp_int_backend<N * 8, N * 8, boost::multiprecision::unsigned_magnitude, boost::multiprecision::unchecked, void>>;
+	typedef  boost::multiprecision::number<boost::multiprecision::cpp_int_backend<N * 8, N * 8, boost::multiprecision::unsigned_magnitude, boost::multiprecision::unchecked, void>> Arith ;
 
 public:
 	enum { size = N };
@@ -122,21 +122,21 @@ inline std::ostream& operator<<(std::ostream& _out, FixedHash<N> const& _h)
 	return _out;
 }
 
-using h256 = FixedHash<32>;
-using h160 = FixedHash<20>;
-using h256s = std::vector<h256>;
-using h160s = std::vector<h160>;
-using h256Set = std::set<h256>;
-using h160Set = std::set<h160>;
+typedef  FixedHash<32> h256 ;
+typedef  FixedHash<20> h160 ;
+typedef  std::vector<h256> h256s ;
+typedef  std::vector<h160> h160s ;
+typedef  std::set<h256> h256Set ;
+typedef  std::set<h160> h160Set ;
 
-using Secret = h256;
-using Address = h160;
-using Addresses = h160s;
+typedef  h256 Secret ;
+typedef  h160 Address ;
+typedef  h160s Addresses ;
 
 // Map types.
-using StringMap = std::map<std::string, std::string>;
-using u256Map = std::map<u256, u256>;
-using HexMap = std::map<bytes, std::string>;
+typedef  std::map<std::string, std::string> StringMap ;
+typedef  std::map<u256, u256> u256Map ;
+typedef  std::map<bytes, std::string> HexMap ;
 
 // Null/Invalid values for convenience.
 static const u256 Invalid256 = ~(u256)0;
@@ -151,9 +151,9 @@ public:
 };
 
 extern std::map<std::type_info const*, bool> g_logOverride;
-extern thread_local std::string t_logThreadName;
+extern /*thread_local*/ std::string t_logThreadName;
 
-inline void setThreadName(std::string const& _n) { t_logThreadName = _n; }
+inline void setThreadName(std::string const& _n) { /*t_logThreadName = _n;*/ }
 
 struct LogChannel { static const char constexpr* name = "   "; static const int verbosity = 1; };
 struct LeftChannel: public LogChannel { static const char constexpr* name = "<<<"; };
@@ -177,7 +177,7 @@ public:
 		auto it = g_logOverride.find(i);
 		if ((it != g_logOverride.end() && it->second == true) || (it == g_logOverride.end() && Id::verbosity <= g_logVerbosity))
 		{
-			time_t rawTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+			time_t rawTime = boost::chrono::system_clock::to_time_t(boost::chrono::system_clock::now());
 			char buf[9];
 			strftime(buf, 9, "%X", localtime(&rawTime));
 			sstr << Id::name << " [ " << buf << " | " << t_logThreadName << (_term ? " ] " : "");

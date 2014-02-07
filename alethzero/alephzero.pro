@@ -12,23 +12,12 @@ TEMPLATE = app
 
 CONFIG(debug, debug|release): DEFINES += ETH_DEBUG
 
-QMAKE_CXXFLAGS += -std=c++11
+QMAKE_CXXFLAGS += -std=c++0x
 
-#CONFIG += local_cryptopp
-
-local_cryptopp {
-	QMAKE_LIBDIR += ../../cryptopp562
-	CRYPTOPP_LIBS += -lcryptopp
-}
-
-!local_cryptopp {
-	CRYPTOPP_LIBS += -lcryptoppeth
-}
-
-INCLUDEPATH += ../../cpp-ethereum
-QMAKE_LIBDIR += ../../cpp-ethereum-build/libethereum ../../cpp-ethereum-build/secp256k1
-CONFIG(debug, debug|release): LIBS += -Wl,-rpath,../../cpp-ethereum-build/libethereum
-LIBS += -lethereum $${CRYPTOPP_LIBS} -lsecp256k1 -lminiupnpc -lleveldb -lgmp -lboost_filesystem -lboost_system
+INCLUDEPATH += ../ /usr/x86_64-w64-mingw32/include
+QMAKE_LIBDIR += ../libethereum/lib ../../cryptopp562 /usr/x86_64-w64-mingw32/lib /usr/x86_64-w64-mingw32/plugins/platforms
+LIBS += -lethereum -lcryptopp -lminiupnpc -lleveldb -lgmp -lboost_filesystem-mt-s -lboost_system-mt-s -lboost_chrono-mt-s -lboost_thread_win32-mt-s -lmswsock -lshlwapi -liphlpapi
+#INCLUDEPATH = ../../secp256k1/include ../
 
 SOURCES += main.cpp \
     MainWin.cpp

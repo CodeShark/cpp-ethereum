@@ -59,9 +59,12 @@ class UnknownParent: public std::exception {};
  */
 class BlockChain
 {
+private:
+	void delegateConstructor(std::string _path, bool _killExisting = false);
+
 public:
-	BlockChain(bool _killExisting = false): BlockChain(std::string(), _killExisting) {}
-	BlockChain(std::string _path, bool _killExisting = false);
+	BlockChain(bool _killExisting = false) { delegateConstructor(std::string(), _killExisting); }
+	BlockChain(std::string _path, bool _killExisting = false) { delegateConstructor(_path, _killExisting); }
 	~BlockChain();
 
 	/// (Potentially) renders invalid existing bytesConstRef returned by lastBlock.
