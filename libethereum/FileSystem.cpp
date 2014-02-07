@@ -31,9 +31,9 @@ std::string getDataDir()
 #ifdef _WIN32
 	char path[1024] = "";
 	if (SHGetSpecialFolderPathA(NULL, path, CSIDL_APPDATA, true))
-		return (boost::filesystem::path(path) / "Ethereum").string();
+		return boost::filesystem::canonical((boost::filesystem::path(path) / "Ethereum")).string();
 	else
-        {
+	{
 		std::cerr << "getDataDir() - SHGetSpecialFolderPathA() failed." << std::endl;
 		throw std::runtime_error("getDataDir() - SHGetSpecialFolderPathA() failed.");
 	}
@@ -47,7 +47,7 @@ std::string getDataDir()
 #if defined(__APPLE__) && defined(__MACH__)
 	dataDirPath /= "Library/Application Support";
 	boost::filesystem::create_directory(dataDirPath);
-        return (dataDirPath / "Ethereum").string();
+	return (dataDirPath / "Ethereum").string();
 #else
 	return (dataDirPath / ".ethereum").string();
 #endif
