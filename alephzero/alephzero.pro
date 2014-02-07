@@ -12,11 +12,12 @@ TEMPLATE = app
 
 CONFIG(debug, debug|release): DEFINES += ETH_DEBUG
 
-QMAKE_CXXFLAGS += -std=c++11
+QMAKE_CXXFLAGS += -std=c++0x
 
-QMAKE_LIBDIR += ../libethereum ../../cpp-ethereum-build/libethereum ../../secp256k1 ../../cryptopp562
-LIBS += -Wl,-rpath,../libethereum -Wl,-rpath,../../cpp-ethereum-build/libethereum -Wl,-rpath,../../secp256k1 -Wl,-rpath,../../cryptopp562 -lethereum -lcryptopp -lminiupnpc -lsecp256k1 -lleveldb -lgmp -lboost_filesystem -lboost_system
-INCLUDEPATH = ../../secp256k1/include ../../cpp-ethereum
+INCLUDEPATH += /usr/x86_64-w64-mingw32/include
+QMAKE_LIBDIR += ../libethereum/lib ../../cryptopp562 /usr/x86_64-w64-mingw32/lib /usr/x86_64-w64-mingw32/plugins/platforms
+LIBS += -lethereum -lcryptopp -lminiupnpc -lleveldb -lgmp -lboost_filesystem-mt-s -lboost_system-mt-s -lboost_chrono-mt-s -lboost_thread_win32-mt-s -lmswsock -lshlwapi -liphlpapi
+#INCLUDEPATH = ../../secp256k1/include ../
 
 SOURCES += main.cpp \
     MainWin.cpp
