@@ -5,12 +5,12 @@
 #include <vector>
 #include <string>
 
-#if WIN32
+#if defined(WIN32)
 #pragma warning(push)
 #pragma warning(disable: 4267)
 #endif
 #include <leveldb/db.h>
-#if WIN32
+#if defined(WIN32)
 #pragma warning(pop)
 #endif
 

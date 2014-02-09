@@ -7,6 +7,17 @@ cmake_policy(SET CMP0015 NEW)
 
 set(ETH_VERSION 0.1.1)
 
+set(TARGET_PLATFORM CACHE STRING "linux")
+if (${TARGET_PLATFORM} STREQUAL "w64")
+	MESSAGE("It's windows")
+	set(CMAKE_C_COMPILER		x86_64-w64-mingw32-gcc)
+	set(CMAKE_CXX_COMPILER		x86_64-w64-mingw32-g++)
+	set(CMAKE_AR			x86_64-w64-mingw32-ar)
+	set(CMAKE_RANLIB		x86_64-w64-mingw32-ranlib)
+	include_directories(/usr/x86_64-w64-mingw32/include)
+	link_directories(/usr/x86_64-w64-mingw32/lib)
+endif()
+
 # Initialize CXXFLAGS.
 set(CMAKE_CXX_FLAGS                "-Wall -std=c++11 -DETH_VERSION=${ETH_VERSION}")
 set(CMAKE_CXX_FLAGS_DEBUG          "-O0 -g")
@@ -28,20 +39,32 @@ else ()
 endif ()
 
 # Look for available Crypto++ version and if it is >= 5.6.2
-find_path(ID cryptlib.h
-	/usr/include/cryptopp
-	/usr/include/crypto++
-	/usr/local/include/cryptopp
-	/usr/local/include/crypto++
-	/opt/local/include/cryptopp
-	/opt/local/include/crypto++
+if (${TARGET_PLATFORM} STREQUAL "w64")
+	MESSAGE("It definitely is windows!")
+	find_path(ID cryptlib.h
+		/usr/x86_64-w64-mingw32/cryptopp
+		/usr/x86_64-w64-mingw32/crypto++
 	)
-find_library(LS NAMES cryptoppeth cryptopp
-	PATHS
-	/usr/lib
-	/usr/local/lib
-	/opt/local/lib
+	find_library(LS NAMES cryptoppeth cryptopp
+		PATHS
+		/usr/x86_64-w64-mingw32/lib
 	)
+else ()
+	find_path(ID cryptlib.h
+		/usr/include/cryptopp
+		/usr/include/crypto++
+		/usr/local/include/cryptopp
+		/usr/local/include/crypto++
+		/opt/local/include/cryptopp
+		/opt/local/include/crypto++
+		)
+	find_library(LS NAMES cryptoppeth cryptopp
+		PATHS
+		/usr/lib
+		/usr/local/lib
+		/opt/local/lib
+		)
+endif ()
 
 if(ID AND LS)
 	message(STATUS "Found Crypto++: ${ID}, ${LS}")

@@ -90,7 +90,7 @@ private:
 	ldb::WriteOptions m_writeOptions;
 };
 
-#if WIN32
+#if defined(WIN32)
 #pragma warning(push)
 #pragma warning(disable:4100) // disable warnings so it compiles
 #endif
@@ -342,7 +342,7 @@ std::ostream& operator<<(std::ostream& _out, GenericTrieDB<DB> const& _db)
 	return _out;
 }
 
-#if WIN32
+#if defined(WIN32)
 #pragma warning(pop)
 #endif
 
