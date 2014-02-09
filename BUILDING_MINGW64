@@ -1,6 +1,8 @@
 1) Create fresh ubuntu 14.04 (Trusty Tahr) VM
     http://cdimage.ubuntu.com/daily-live/current/trusty-desktop-amd64.iso
 
+The following is all automated by the script ./winbuild
+
 2) Install packages
     $ sudo apt-get update && sudo apt-get upgrade
     $ sudo apt-get install build-essential libgmp-dev libgmp3-dev libcrypto++-dev \
@@ -34,10 +36,10 @@
     $ wget http://download.qt-project.org/official_releases/qt/5.2/5.2.1/single/qt-everywhere-opensource-src-5.2.1.tar.gz 
     $ tar xzvf qt-everywhere-opensource-src-5.2.1.tar.gz
 
-    Qt5.2.1 has some problems with preprocessor definitions when building with MinGW. The workaround is as follows:
-        Edit ~/qt-everywhere-opensource-src-5.2.1/qtbase/src/gui/kernel/qplatformsessionmanager.h
-        and ~/qt-everywhere-opensource-src-5.2.1/qtbase/src/gui/kernel/qsessionmanager.h
-        In both files replace QT_NO_SESSION_MANAGER with __QT_NO_SESSION_MANAGER
+    Qt5.2.1 has some problems with preprocessor definitions when building with MinGW.
+    $ sed -i -e 's/QT_NO_SESSIONMANAGER/__QT_NO_SESSIONMANAGER/g' \
+        ~/qt-everywhere-opensource-src-5.2.1/qtbase/src/gui/kernel/qplatformsessionmanager.h \
+        ~/qt-everywhere-opensource-src-5.2.1/qtbase/src/gui/kernel/qsessionmanager.h
 
     $ export INSTALLPREFIX=/usr/x86_64-w64-mingw32
     $ mkdir qt5-w64-build
@@ -141,16 +143,19 @@
     $ mkdir obj
     $ mkdir lib
     $ make
+    $ cd ..
 
     Build headless daemon
-    $ cd ../eth
+    $ cd eth
     $ git checkout codeshark/trusty_tahr_builds Makefile
     $ mkdir obj
     $ make
+    $ cd ..
 
     Build Qt client 
-    $ cd ../alethzero
+    $ cd alethzero
     $ git checkout codeshark/trusty_tahr_builds alethzero.pro
     $ /usr/x86_64-w64-mingw32/host/bin/qmake -spec win32-g++ alethzero.pro
     $ make
+    $ cd ..
 

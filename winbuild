@@ -14,15 +14,15 @@ set -x
 #    http://cdimage.ubuntu.com/daily-live/current/trusty-desktop-amd64.iso
 
 # 2) Install packages
-sudo apt-get update && sudo apt-get upgrade
-sudo apt-get install build-essential libgmp-dev libgmp3-dev libcrypto++-dev \
+sudo apt-get update && sudo apt-get -y upgrade
+sudo apt-get -y install build-essential libgmp-dev libgmp3-dev libcrypto++-dev \
     git cmake libboost-all-dev automake libtool libleveldb-dev yasm unzip lzip libminiupnpc-dev \
     mingw-w64 gcc-mingw-w64 g++-mingw-w64 binutils-mingw-w64
 
 # For full Qt client:
 if ! [[ $withoutqt ]]
 then
-    sudo apt-get install qtbase5-dev qt5-default
+    sudo apt-get -y install qtbase5-dev qt5-default
 fi
 
 # 3) Build boost for windows
@@ -54,8 +54,8 @@ then
     #    Qt5.2.1 has some problems with preprocessor definitions when building with MinGW. The workaround is as follows:
     #        Edit ~/qt-everywhere-opensource-src-5.2.1/qtbase/src/gui/kernel/qplatformsessionmanager.h
     #        and ~/qt-everywhere-opensource-src-5.2.1/qtbase/src/gui/kernel/qsessionmanager.h
-    #        In both files replace QT_NO_SESSION_MANAGER with __QT_NO_SESSION_MANAGER
-    sed -i -e 's/QT_NO_SESSION_MANAGER/__QT_NO_SESSION_MANAGER/g' \
+    #        In both files replace QT_NO_SESSIONMANAGER with __QT_NO_SESSIONMANAGER
+    sed -i -e 's/QT_NO_SESSIONMANAGER/__QT_NO_SESSIONMANAGER/g' \
         ~/qt-everywhere-opensource-src-5.2.1/qtbase/src/gui/kernel/qplatformsessionmanager.h \
         ~/qt-everywhere-opensource-src-5.2.1/qtbase/src/gui/kernel/qsessionmanager.h
 
@@ -177,7 +177,7 @@ cd ..
 if ! [[ $withoutqt ]]
 then
     #Build Qt client 
-    cd ../alethzero
+    cd alethzero
     git checkout codeshark/trusty_tahr_builds alethzero.pro
     /usr/x86_64-w64-mingw32/host/bin/qmake -spec win32-g++ alethzero.pro
     make
