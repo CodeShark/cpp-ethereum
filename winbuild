@@ -1,0 +1,186 @@
+#!/bin/bash
+
+declare -A params
+for param in $@
+do
+    params[$param]=1
+done
+
+withoutqt=${params["--without-qt"]}
+
+set -x
+
+# 1) Create fresh ubuntu 14.04 (Trusty Tahr) VM
+#    http://cdimage.ubuntu.com/daily-live/current/trusty-desktop-amd64.iso
+
+# 2) Install packages
+sudo apt-get update && sudo apt-get upgrade
+sudo apt-get install build-essential libgmp-dev libgmp3-dev libcrypto++-dev \
+    git cmake libboost-all-dev automake libtool libleveldb-dev yasm unzip lzip libminiupnpc-dev \
+    mingw-w64 gcc-mingw-w64 g++-mingw-w64 binutils-mingw-w64
+
+# For full Qt client:
+if ! [[ $withoutqt ]]
+then
+    sudo apt-get install qtbase5-dev qt5-default
+fi
+
+# 3) Build boost for windows
+wget http://downloads.sourceforge.net/project/boost/boost/1.55.0/boost_1_55_0.tar.bz2
+tar xjvf boost_1_55_0.tar.bz2
+cd boost_1_55_0
+./bootstrap.sh --without-icu
+echo "using gcc : mingw32 : x86_64-w64-mingw32-g++ : <rc>x86_64-w64-mingw32-windres <archiver>x86_64-w64-mingw32-ar <ranlib>x86_64-w64-mingw32-ranlib ;" > user-config.jam
+sudo ./bjam toolset=gcc address-model=64 target-os=windows variant=release threading=multi threadapi=win32 \
+    link=static runtime-link=static --prefix=/usr/x86_64-w64-mingw32 --user-config=user-config.jam \
+    --without-mpi --without-python -sNO_BZIP2=1 --layout=tagged install
+cd ..
+
+# 4) Build zlib for windows (required by Qt5)
+if ! [[ $withoutqt ]]
+then
+    wget http://zlib.net/zlib-1.2.8.tar.gz
+    tar xzvf zlib-1.2.8.tar.gz
+    cd zlib-1.2.8
+    CC=x86_64-w64-mingw32-gcc AR=x86_64-w64-mingw32-ar RANLIB=x86_64-w64-mingw32-ranlib ./configure --prefix=/usr/x86_64-w64-mingw32 --static
+    make
+    sudo make install
+    cd ..
+
+    # 5) Build Qt5 for windows: (not required for headless daemon)
+    wget http://download.qt-project.org/official_releases/qt/5.2/5.2.1/single/qt-everywhere-opensource-src-5.2.1.tar.gz 
+    tar xzvf qt-everywhere-opensource-src-5.2.1.tar.gz
+
+    #    Qt5.2.1 has some problems with preprocessor definitions when building with MinGW. The workaround is as follows:
+    #        Edit ~/qt-everywhere-opensource-src-5.2.1/qtbase/src/gui/kernel/qplatformsessionmanager.h
+    #        and ~/qt-everywhere-opensource-src-5.2.1/qtbase/src/gui/kernel/qsessionmanager.h
+    #        In both files replace QT_NO_SESSION_MANAGER with __QT_NO_SESSION_MANAGER
+    sed -i -e 's/QT_NO_SESSION_MANAGER/__QT_NO_SESSION_MANAGER/g' \
+        ~/qt-everywhere-opensource-src-5.2.1/qtbase/src/gui/kernel/qplatformsessionmanager.h \
+        ~/qt-everywhere-opensource-src-5.2.1/qtbase/src/gui/kernel/qsessionmanager.h
+
+    INSTALLPREFIX=/usr/x86_64-w64-mingw32
+    mkdir qt5-w64-build
+    cd qt5-w64-build
+    ../qt-everywhere-opensource-src-5.2.1/configure -prefix / -hostprefix $INSTALLPREFIX/host -plugindir /plugins -translationdir /translations \
+        -xplatform win32-g++ -device-option CROSS_COMPILE=x86_64-w64-mingw32- -sysroot $INSTALLPREFIX -confirm-license -release -opensource -static -qt-pcre \
+        -no-icu -no-glib -no-audio-backend -no-javascript-jit -no-sql-sqlite -no-nis -no-cups -no-iconv -no-dbus -no-opengl -nomake examples \
+        -no-feature-style-plastique -no-feature-style-cleanlooks -no-feature-style-motif -no-feature-style-cde -no-feature-style-windowsce \
+        -no-feature-style-windowsmobile -no-feature-style-s60 -no-pch -no-sql-odbc -no-compile-examples -no-qml-debug -no-sm -skip qtactiveqt \
+        -skip qtdeclarative -skip qtdoc -skip qtgraphicaleffects -skip qtmultimedia -skip qtquick1 -skip qtquickcontrols -skip qtscript -skip qtsensors \
+        -skip qtserialport -skip qtsvg -skip qtwebkit -skip qtwebkit-examples -skip qtx11extras -skip qtxmlpatterns -no-openssl -qt-zlib
+    make
+    sudo make install
+    cd ..
+fi
+
+# 6) Build leveldb for windows:
+git clone https://github.com/bitcoin/bitcoin.git
+cp bitcoin/src/leveldb ./ -R
+cd leveldb
+TARGET_OS=NATIVE_WINDOWS CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++ AR=x86_64-w64-mingw32-ar \
+    make libleveldb.a libmemenv.a
+sudo cp include/leveldb /usr/x86_64-w64-mingw32/include/ -R
+sudo cp *.a /usr/x86_64-w64-mingw32/lib/
+cd ..
+
+# 7) Build gmp for windows:
+wget https://gmplib.org/download/gmp/gmp-5.1.3.tar.lz
+lzip -d gmp-5.1.3.tar.lz
+tar xvf gmp-5.1.3.tar
+mkdir gmp-w64-build
+cd gmp-w64-build 
+../gmp-5.1.3/configure --host=x86_64-w64-mingw32 --prefix=/usr/x86_64-w64-mingw32
+make
+sudo make install
+cd ..
+
+# 8) Build miniupnpc for windows:
+wget http://miniupnp.free.fr/files/download.php?file=miniupnpc-1.9.tar.gz -O miniupnpc-1.9.tar.gz
+tar xzvf miniupnpc-1.9.tar.gz
+cd miniupnpc-1.9
+CC=x86_64-w64-mingw32-gcc AR=x86_64-w64-mingw32-ar CFLAGS="-DSTATICLIB -I/usr/x86_64-w64-mingw32/include" LDFLAGS=-L/usr/x86_64-w64-mingw32/lib make libminiupnpc.a
+sudo mkdir /usr/x86_64-w64-mingw32/include/miniupnpc
+sudo cp *.h /usr/x86_64-w64-mingw32/include/miniupnpc/
+sudo cp libminiupnpc.a /usr/x86_64-w64-mingw32/lib/
+cd ..
+
+
+# 9) Build cryptopp562 for windows:
+mkdir cryptopp562
+cd cryptopp562
+wget http://www.cryptopp.com/cryptopp562.zip
+unzip cryptopp562.zip
+CXX=x86_64-w64-mingw32-g++ AR=x86_64-w64-mingw32-ar make static
+x86_64-w64-mingw32-ranlib libcryptopp.a
+cd ..
+
+# 10) Build secp256k1 for windows:
+wget http://gavwood.com/secp256k1.tar.bz2
+tar xjvf secp256k1.tar.bz2
+cd secp256k1
+./configure
+    
+#    Add the following lines to the end of config.mk:
+echo 'CC=x86_64-w64-mingw32-gcc' >> config.mk
+echo 'AR=x86_64-w64-mingw32-ar' >> config.mk
+echo 'RANLIB=x86_64-w64-mingw32-ranlib' >> config.mk
+echo 'CFLAGS_EXTRA+=-I/usr/x86_64-w64-mingw32/include' >> config.mk
+echo 'LDFLAGS_EXTRA+=-L/usr/x86_64-w64-mingw32/lib' >> config.mk
+
+#    Edit Makefile, change line:
+#         $(YASM) -f elf64 -o obj/field_5x52_asm.o src/field_5x52_asm.asm
+#    to
+#         $(YASM) -f win64 -o obj/field_5x52_asm.o src/field_5x52_asm.asm
+
+sed -i -e 's/elf64/win64/g' Makefile
+
+make
+cd ..
+
+# (ignore linker errors for dynamic library, we only care about static library)
+
+# 11) Build cpp-ethereum:
+git clone https://github.com/ethereum/cpp-ethereum
+cd cpp-ethereum
+
+git remote add codeshark https://github.com/CodeShark/cpp-ethereum
+git fetch codeshark
+
+# Replace usleep()
+sed -i -e 's/usleep\w*(\([^)]\+\))/std::this_thread::sleep_for(std::chrono::microseconds(\1))/g' $(find -type f -name \*.h -o -name \*.cpp)
+
+# Replace random()
+sed -i -e 's/random()/rand()/g' $(find -type f -name \*.h -o -name \*.cpp)
+
+# WE ARE FINALLY READY TO BUILD!!!
+
+# Build libethereum 
+cd libethereum
+git checkout codeshark/trusty_tahr_builds Makefile
+
+# We need to #include "Common.h" in FileSystem.cpp
+git checkout codeshark/trusty_tahr_builds FileSystem.cpp
+
+mkdir obj
+mkdir lib
+make
+cd ..
+
+# Build headless daemon
+cd eth
+git checkout codeshark/trusty_tahr_builds Makefile
+mkdir obj
+make
+cd ..
+
+if ! [[ $withoutqt ]]
+then
+    #Build Qt client 
+    cd ../alethzero
+    git checkout codeshark/trusty_tahr_builds alethzero.pro
+    /usr/x86_64-w64-mingw32/host/bin/qmake -spec win32-g++ alethzero.pro
+    make
+    cd ..
+fi
+
