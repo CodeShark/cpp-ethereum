@@ -2,7 +2,7 @@ EXE_EXT = .exe
 
 CXX = x86_64-w64-mingw32-g++
 
-CXX_FLAGS = -Wall -std=c++0x
+CXX_FLAGS = -Wall -std=c++11
 
 INCLUDE_PATH += \
     -I./ \
@@ -18,6 +18,8 @@ LIB_PATH += \
     -L../../secp256k1
 
 LIBS += \
+    -static-libgcc \
+    -static-libstdc++ \
     -static \
     -lgcc \
     -lgdi32 \

@@ -1,7 +1,7 @@
 CXX = x86_64-w64-mingw32-g++
 AR = x86_64-w64-mingw32-ar
 
-CXX_FLAGS = -Wall -DSTATICLIB -std=c++0x -Doverride=""
+CXX_FLAGS = -Wall -DSTATICLIB -std=c++11
 
 HEADERS = \
     AddressState.h \
