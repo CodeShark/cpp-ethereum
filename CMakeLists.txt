@@ -18,6 +18,8 @@ if (${TARGET_PLATFORM} STREQUAL "w64")
 	set(CMAKE_AR				x86_64-w64-mingw32-ar)
 	set(CMAKE_RANLIB			x86_64-w64-mingw32-ranlib)
 
+	set(CMAKE_EXECUTABLE_SUFFIX		.exe)
+
 	set(CMAKE_FIND_ROOT_PATH
 		/usr/x86_64-w64-mingw32
 	)
