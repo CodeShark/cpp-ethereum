@@ -1,12 +1,10 @@
 1) Create fresh ubuntu 14.04 (Trusty Tahr) VM
     http://cdimage.ubuntu.com/daily-live/current/trusty-desktop-amd64.iso
 
-The following is all automated by the script ./winbuild
-
 2) Install packages
     $ sudo apt-get update && sudo apt-get upgrade
-    $ sudo apt-get install build-essential libgmp-dev libgmp3-dev libcrypto++-dev \
-        git cmake libboost-all-dev automake libtool libleveldb-dev yasm unzip lzip libminiupnpc-dev \
+    $ sudo apt-get install build-essential libgmp-dev libgmp3-dev git cmake \
+        libboost-all-dev automake libtool libleveldb-dev yasm unzip lzip libminiupnpc-dev \
         mingw-w64 gcc-mingw-w64 g++-mingw-w64 binutils-mingw-w64
 
     For full Qt client:
@@ -22,6 +20,8 @@ The following is all automated by the script ./winbuild
         link=static runtime-link=static --prefix=/usr/x86_64-w64-mingw32 --user-config=user-config.jam \
         --without-mpi --without-python -sNO_BZIP2=1 --layout=tagged install
     $ cd ..
+
+    (-Wno-unused-local-typedefs to suppress warnings)
 
 4) Build zlib for windows (required by Qt5)
     $ wget http://zlib.net/zlib-1.2.8.tar.gz
@@ -55,6 +55,8 @@ The following is all automated by the script ./winbuild
     $ sudo make install
     $ cd ..
 
+    (-Wno-strict-overflow -Wno-strict-aliasing -Wno-unused-parameters to suppress warnings)
+
 6) Build leveldb for windows:
     $ git clone https://github.com/bitcoin/bitcoin.git
     $ cp bitcoin/src/leveldb ./ -R
@@ -80,35 +82,73 @@ The following is all automated by the script ./winbuild
     $ wget http://miniupnp.free.fr/files/download.php?file=miniupnpc-1.9.tar.gz -O miniupnpc-1.9.tar.gz
     $ tar xzvf miniupnpc-1.9.tar.gz
     $ cd miniupnpc-1.9
-    $ CC=x86_64-w64-mingw32-gcc AR=x86_64-w64-mingw32-ar CFLAGS="-DSTATICLIB -I/usr/x86_64-w64-mingw32/include" LDFLAGS=-L/usr/x86_64-w64-mingw32/lib libminiupnpc.a
+    $ CC=x86_64-w64-mingw32-gcc AR=x86_64-w64-mingw32-ar CFLAGS="-DSTATICLIB -I/usr/x86_64-w64-mingw32/include" LDFLAGS=-L/usr/x86_64-w64-mingw32/lib make libminiupnpc.a
     $ sudo mkdir /usr/x86_64-w64-mingw32/include/miniupnpc
     $ sudo cp *.h /usr/x86_64-w64-mingw32/include/miniupnpc/
     $ sudo cp libminiupnpc.a /usr/x86_64-w64-mingw32/lib/
     $ cd ..
 
-9) Build cryptopp562 for windows:
+9) Build cryptopp562 for linux and windows:
     $ mkdir cryptopp562
     $ cd cryptopp562
     $ wget http://www.cryptopp.com/cryptopp562.zip
     $ unzip cryptopp562.zip
+
+    Linux
+    $ make static
+    $ sudo mkdir /usr/include/cryptopp
+    $ sudo cp *.h /usr/include/cryptopp
+    $ sudo cp libcrypto.a /usr/lib
+    $ make clean
+
+    Windows
     $ CXX=x86_64-w64-mingw32-g++ AR=x86_64-w64-mingw32-ar make static
     $ x86_64-w64-mingw32-ranlib libcryptopp.a
     $ sudo mkdir /usr/x86_64-w64-mingw32/include/cryptopp
     $ sudo cp *.h /usr/x86_64-w64-mingw32/include/cryptopp
     $ sudo cp libcryptopp.a /usr/x86_64-w64-mingw32/lib
-    $ cd ..
+    $ make clean
 
-10) Build cpp-ethereum:
+    (-Wno-deprecated to suppress warnings)
+
+    $ cd .. 
+
+10) Patch Qt5.2.1 to work with cmake for static build
+    Windows uses library naming convention name.lib, MinGW uses libname.a. So we must replace the names:
+        Qt5Gui
+        $ cd /usr/x86_64-w64-mingw32/lib/cmake/Qt5Gui
+        $ sudo sed -i -e 's/\/\([^\.]*\)\.lib/\/lib\1\.a/g' $(find * -type f)
+
+        Qt5Network
+        $ cd /usr/x86_64-w64-mingw32/lib/cmake/Qt5Network
+        $ sudo sed -i -e 's/\/\([^\.]*\)\.lib/\/lib\1\.a/g' $(find * -type f)
+
+    Qt5GuiConfigExtras.cmake tries to use opengl (glu32). Prevent it from looking for it.
+        Replace /usr/x86_64-w64-mingw32/lib/cmake/Qt5Gui/Qt5GuiConfigExtras.cmake:54
+            _qt5gui_find_extra_libs(OPENGL "glu32;opengl32;gdi32;user32" "" "")
+        with
+            #_qt5gui_find_extra_libs(OPENGL "glu32;opengl32;gdi32;user32" "" "")
+
+11) Build cpp-ethereum:
+    Clone the main repo
     $ git clone https://github.com/ethereum/cpp-ethereum
     $ cd cpp-ethereum
 
+    Update the cmake files 
     $ git remote add codeshark https://github.com/CodeShark/cpp-ethereum
     $ git fetch codeshark
-    $ git checkout codeshark/cmake_multibuild
+    $ git checkout codeshark/cmake_multitarget \
+        CMakeLists.txt \
+        libethereum/CMakeLists.txt \
+        test/CMakeLists.txt \
+        eth/CMakeLists.txt \
+        alethzero/CMakeLists.txt \
+        alethzero/alethzero_plugin_import.cpp
     $ cd ..
 
-    $ mkdir cpp-ethereum-w64-build
-    $ cd cpp-ethereum-w64-build
-    $ cmake ../cpp-ethereum -DTARGET_PLATFORM=w64
+    $ mkdir cpp-ethereum-build
+    $ cd cpp-ethereum-build
+    $ cmake ../cpp-ethereum -DTARGET_PLATFORM=<target>
+        (<target> can be either linux or w64)
     $ make
     $ cd ..

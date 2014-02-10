@@ -15,6 +15,7 @@ target_link_libraries(ethereum cryptopp)
 target_link_libraries(ethereum gmp)
 
 if(${TARGET_PLATFORM} STREQUAL "w64")
+	include_directories(/usr/x86_64-w64-mingw32/include/cryptopp)
 	target_link_libraries(ethereum boost_system-mt-s)
 	target_link_libraries(ethereum boost_filesystem-mt-s)
 	target_link_libraries(ethereum boost_thread_win32-mt-s)
