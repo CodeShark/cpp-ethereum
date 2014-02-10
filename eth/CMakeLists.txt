@@ -33,7 +33,7 @@ endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 target_link_libraries(eth ethereum)
 target_link_libraries(eth miniupnpc)
 target_link_libraries(eth leveldb)
-target_link_libraries(eth ${CRYPTOPP_LIBRARIES})
+target_link_libraries(eth cryptopp)
 target_link_libraries(eth gmp)
 
 install( TARGETS eth DESTINATION bin )

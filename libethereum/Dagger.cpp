@@ -7,7 +7,7 @@
 #else
 #pragma GCC diagnostic ignored "-Wunused-function"
 #endif
-#include <sha3.h>
+#include <cryptopp/sha3.h>
 #if WIN32
 #pragma warning(pop)
 #endif

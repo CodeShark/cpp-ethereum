@@ -9,13 +9,23 @@ set(ETH_VERSION 0.1.1)
 
 set(TARGET_PLATFORM CACHE STRING "linux")
 if (${TARGET_PLATFORM} STREQUAL "w64")
-	MESSAGE("It's windows")
+	SET(CMAKE_SYSTEM_NAME Windows)
+
 	set(CMAKE_C_COMPILER		x86_64-w64-mingw32-gcc)
 	set(CMAKE_CXX_COMPILER		x86_64-w64-mingw32-g++)
+	set(CMAKE_RC_COMPILER		x86_64-w64-mingw32-windres)
 	set(CMAKE_AR			x86_64-w64-mingw32-ar)
 	set(CMAKE_RANLIB		x86_64-w64-mingw32-ranlib)
-	include_directories(/usr/x86_64-w64-mingw32/include)
-	link_directories(/usr/x86_64-w64-mingw32/lib)
+
+	set(CMAKE_FIND_ROOT_PATH
+		/usr/x86_64-w64-mingw32
+	)
+
+	set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+	set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+	set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+
+	set(CMAKE_INSTALL_PREFIX	/usr/x86_64-w64-mingw32)
 endif()
 
 # Initialize CXXFLAGS.
@@ -38,68 +48,6 @@ else ()
 	message(FATAL_ERROR "Your C++ compiler does not support C++11.")
 endif ()
 
-# Look for available Crypto++ version and if it is >= 5.6.2
-if (${TARGET_PLATFORM} STREQUAL "w64")
-	MESSAGE("It definitely is windows!")
-	find_path(ID cryptlib.h
-		/usr/x86_64-w64-mingw32/cryptopp
-		/usr/x86_64-w64-mingw32/crypto++
-	)
-	find_library(LS NAMES cryptoppeth cryptopp
-		PATHS
-		/usr/x86_64-w64-mingw32/lib
-	)
-else ()
-	find_path(ID cryptlib.h
-		/usr/include/cryptopp
-		/usr/include/crypto++
-		/usr/local/include/cryptopp
-		/usr/local/include/crypto++
-		/opt/local/include/cryptopp
-		/opt/local/include/crypto++
-		)
-	find_library(LS NAMES cryptoppeth cryptopp
-		PATHS
-		/usr/lib
-		/usr/local/lib
-		/opt/local/lib
-		)
-endif ()
-
-if(ID AND LS)
-	message(STATUS "Found Crypto++: ${ID}, ${LS}")
-	set(_CRYPTOPP_VERSION_HEADER ${ID}/config.h)
-	if(EXISTS ${_CRYPTOPP_VERSION_HEADER})
-		file(STRINGS ${_CRYPTOPP_VERSION_HEADER} _CRYPTOPP_VERSION REGEX "^#define CRYPTOPP_VERSION[ \t]+[0-9]+$")
-		string(REGEX REPLACE "^#define CRYPTOPP_VERSION[ \t]+([0-9]+)" "\\1" _CRYPTOPP_VERSION ${_CRYPTOPP_VERSION})
-		if(${_CRYPTOPP_VERSION} LESS 562)
-			message(STATUS "System Crypto++ version found is smaller than 5.6.2.")
-		else()
-			set(CRYPTOPP_INCLUDE_DIR ${ID} CACHE FILEPATH "" FORCE)
-			set(CRYPTOPP_LIBRARIES ${LS} CACHE FILEPATH "" FORCE)
-			set(CRYPTOPP_FOUND TRUE)
-			message(STATUS "System Crypto++ found and version greater or equal to 5.6.2")
-		endif()
-	endif()
-endif()
-
-if(NOT CRYPTOPP_FOUND)
-	set(CRYPTOPP_INCLUDE_DIR "../cryptopp562" CACHE FILEPATH "" FORCE)
-	find_library(LSLOC NAMES cryptoppeth cryptopp
-	    PATHS ../cryptopp562
-            NO_DEFAULT_PATH
-	)
-	set(CRYPTOPP_LIBRARIES ${LSLOC} CACHE FILEPATH "" FORCE)
-	message(STATUS "System Crypto++ not found, broken or too old. We use ${LSLOC}")
-endif()
-
-# Not really worth caching. We want to reevaluate anyway.
-mark_as_advanced(CRYPTOPP_INCLUDE_DIR CRYPTOPP_LIBRARIES)
-
-# Always "found", given last block.
-include_directories(${CRYPTOPP_INCLUDE_DIR})
-link_directories(${CRYPTOPP_LIBRARIES})
-
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 	link_directories(/usr/local/lib)
 endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
@@ -108,4 +56,4 @@ add_subdirectory(secp256k1)
 add_subdirectory(libethereum)
 add_subdirectory(test)
 add_subdirectory(eth)
-add_subdirectory(alethzero)
+#add_subdirectory(alethzero)

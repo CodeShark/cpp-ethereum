@@ -16,9 +16,7 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 
 if (${TARGET_PLATFORM} STREQUAL "w64")
-	include_directories(/usr/x86_64-w64-mingw32/include/QtWidgets)
-	include_directories(/usr/x86_64-w64-mingw32/include/QtCore)
-	include_directories(/usr/x86_64-w64-mingw32/include/QtNetwork)
+else ()
 endif ()
 
 find_package(Qt5Widgets REQUIRED)

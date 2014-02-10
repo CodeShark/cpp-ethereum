@@ -29,9 +29,9 @@
 #else
 #pragma GCC diagnostic ignored "-Wunused-function"
 #endif
-#include <sha.h>
-#include <sha3.h>
-#include <ripemd.h>
+#include <cryptopp/sha.h>
+#include <cryptopp/sha3.h>
+#include <cryptopp/ripemd.h>
 #if WIN32
 #pragma warning(pop)
 #else
