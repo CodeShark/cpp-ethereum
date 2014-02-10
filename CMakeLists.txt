@@ -9,13 +9,14 @@ set(ETH_VERSION 0.1.1)
 
 set(TARGET_PLATFORM CACHE STRING "linux")
 if (${TARGET_PLATFORM} STREQUAL "w64")
-	SET(CMAKE_SYSTEM_NAME Windows)
+	set(CMAKE_SYSTEM_NAME Windows)
 
-	set(CMAKE_C_COMPILER		x86_64-w64-mingw32-gcc)
-	set(CMAKE_CXX_COMPILER		x86_64-w64-mingw32-g++)
-	set(CMAKE_RC_COMPILER		x86_64-w64-mingw32-windres)
-	set(CMAKE_AR			x86_64-w64-mingw32-ar)
-	set(CMAKE_RANLIB		x86_64-w64-mingw32-ranlib)
+	set(CMAKE_CXX_LIBRARY_ARCHITECTURE	x86_64-w64-mingw32)
+	set(CMAKE_C_COMPILER			x86_64-w64-mingw32-gcc)
+	set(CMAKE_CXX_COMPILER			x86_64-w64-mingw32-g++)
+	set(CMAKE_RC_COMPILER			x86_64-w64-mingw32-windres)
+	set(CMAKE_AR				x86_64-w64-mingw32-ar)
+	set(CMAKE_RANLIB			x86_64-w64-mingw32-ranlib)
 
 	set(CMAKE_FIND_ROOT_PATH
 		/usr/x86_64-w64-mingw32
@@ -56,4 +57,4 @@ add_subdirectory(secp256k1)
 add_subdirectory(libethereum)
 add_subdirectory(test)
 add_subdirectory(eth)
-#add_subdirectory(alethzero)
+add_subdirectory(alethzero)
