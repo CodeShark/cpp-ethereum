@@ -17,6 +17,7 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 
 if (${TARGET_PLATFORM} STREQUAL "w64")
+	set(SRC_LIST ${SRC_LIST} ../windows/qt_plugin_import.cpp)
 else ()
 endif ()
 

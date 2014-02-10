@@ -14,7 +14,7 @@ Build cpp-ethereum:
         test/CMakeLists.txt \
         eth/CMakeLists.txt \
         alethzero/CMakeLists.txt \
-        alethzero/alethzero_plugin_import.cpp
+        windows/qt_plugin_import.cpp
     $ cd ..
 
     $ mkdir cpp-ethereum-build
