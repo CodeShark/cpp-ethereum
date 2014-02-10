@@ -3,20 +3,6 @@ Set up a multibuild environment as described in BUILDING_MULTITARGET_FULL.
 Build cpp-ethereum:
     Clone the main repo
     $ git clone https://github.com/ethereum/cpp-ethereum
-    $ cd cpp-ethereum
-
-    Update the cmake files
-    $ git remote add codeshark https://github.com/CodeShark/cpp-ethereum
-    $ git fetch codeshark
-    $ git checkout codeshark/cmake_multitarget \
-        CMakeLists.txt \
-        libethereum/CMakeLists.txt \
-        test/CMakeLists.txt \
-        eth/CMakeLists.txt \
-        alethzero/CMakeLists.txt \
-        windows/qt_plugin_import.cpp
-    $ cd ..
-
     $ mkdir cpp-ethereum-build
     $ cd cpp-ethereum-build
     $ cmake ../cpp-ethereum -DTARGET_PLATFORM=<target>

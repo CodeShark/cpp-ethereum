@@ -115,12 +115,7 @@
 
 10) Patch Qt5.2.1 to work with cmake for static build
     Windows uses library naming convention name.lib, MinGW uses libname.a. So we must replace the names:
-        Qt5Gui
-        $ cd /usr/x86_64-w64-mingw32/lib/cmake/Qt5Gui
-        $ sudo sed -i -e 's/\/\([^\.]*\)\.lib/\/lib\1\.a/g' $(find * -type f)
-
-        Qt5Network
-        $ cd /usr/x86_64-w64-mingw32/lib/cmake/Qt5Network
+        $ cd /usr/x86_64-w64-mingw32/lib/cmake
         $ sudo sed -i -e 's/\/\([^\.]*\)\.lib/\/lib\1\.a/g' $(find * -type f)
 
     Qt5GuiConfigExtras.cmake tries to use opengl (glu32). Prevent it from looking for it.
@@ -132,20 +127,6 @@
 11) Build cpp-ethereum:
     Clone the main repo
     $ git clone https://github.com/ethereum/cpp-ethereum
-    $ cd cpp-ethereum
-
-    Update the cmake files 
-    $ git remote add codeshark https://github.com/CodeShark/cpp-ethereum
-    $ git fetch codeshark
-    $ git checkout codeshark/cmake_multitarget \
-        CMakeLists.txt \
-        libethereum/CMakeLists.txt \
-        test/CMakeLists.txt \
-        eth/CMakeLists.txt \
-        alethzero/CMakeLists.txt \
-        windows/qt_plugin_import.cpp
-    $ cd ..
-
     $ mkdir cpp-ethereum-build
     $ cd cpp-ethereum-build
     $ cmake ../cpp-ethereum -DTARGET_PLATFORM=<target>
