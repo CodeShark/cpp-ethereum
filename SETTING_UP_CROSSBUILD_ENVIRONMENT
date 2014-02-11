@@ -32,7 +32,7 @@
     $ sudo make install
     $ cd ..
 
-5) Build Qt5 for windows: (not required for headless daemon)
+5) Build Qt5 for windows (not required for headless daemon)
     $ wget http://download.qt-project.org/official_releases/qt/5.2/5.2.1/single/qt-everywhere-opensource-src-5.2.1.tar.gz 
     $ tar xzvf qt-everywhere-opensource-src-5.2.1.tar.gz
 
@@ -57,7 +57,12 @@
 
     (-Wno-strict-overflow -Wno-strict-aliasing -Wno-unused-parameters to suppress warnings)
 
-6) Build leveldb for windows:
+    Patch Qt5.2.1 to work with cmake for static build.
+    Windows uses library naming convention name.lib, MinGW uses libname.a. So we must replace the names:
+    $ cd /usr/x86_64-w64-mingw32/lib/cmake
+    $ sudo sed -i -e 's/\/\([^\.]*\)\.lib/\/lib\1\.a/g' $(find * -type f)
+
+6) Build leveldb for windows
     $ git clone https://github.com/bitcoin/bitcoin.git
     $ cp bitcoin/src/leveldb ./ -R
     $ cd leveldb
@@ -67,7 +72,7 @@
     $ sudo cp *.a /usr/x86_64-w64-mingw32/lib/
     $ cd ..
 
-7) Build gmp for windows:
+7) Build gmp for windows
     $ wget https://gmplib.org/download/gmp/gmp-5.1.3.tar.lz
     $ lzip -d gmp-5.1.3.tar.lz
     $ tar xvf gmp-5.1.3.tar
@@ -78,17 +83,18 @@
     $ sudo make install
     $ cd ..
 
-8) Build miniupnpc for windows:
+8) Build miniupnpc for windows
     $ wget http://miniupnp.free.fr/files/download.php?file=miniupnpc-1.9.tar.gz -O miniupnpc-1.9.tar.gz
     $ tar xzvf miniupnpc-1.9.tar.gz
     $ cd miniupnpc-1.9
-    $ CC=x86_64-w64-mingw32-gcc AR=x86_64-w64-mingw32-ar CFLAGS="-DSTATICLIB -I/usr/x86_64-w64-mingw32/include" LDFLAGS=-L/usr/x86_64-w64-mingw32/lib make libminiupnpc.a
+    $ CC=x86_64-w64-mingw32-gcc AR=x86_64-w64-mingw32-ar CFLAGS="-DSTATICLIB -I/usr/x86_64-w64-mingw32/include" LDFLAGS=-L/usr/x86_64-w64-mingw32/lib \
+        make libminiupnpc.a
     $ sudo mkdir /usr/x86_64-w64-mingw32/include/miniupnpc
     $ sudo cp *.h /usr/x86_64-w64-mingw32/include/miniupnpc/
     $ sudo cp libminiupnpc.a /usr/x86_64-w64-mingw32/lib/
     $ cd ..
 
-9) Build cryptopp562 for linux and windows:
+9) Build cryptopp562 for linux and windows
     $ mkdir cryptopp562
     $ cd cryptopp562
     $ wget http://www.cryptopp.com/cryptopp562.zip
@@ -113,16 +119,14 @@
 
     $ cd .. 
 
-10) Patch Qt5.2.1 to work with cmake for static build
-    Windows uses library naming convention name.lib, MinGW uses libname.a. So we must replace the names:
-        $ cd /usr/x86_64-w64-mingw32/lib/cmake
-        $ sudo sed -i -e 's/\/\([^\.]*\)\.lib/\/lib\1\.a/g' $(find * -type f)
-
+10) Qt5.2.1 + cmake opengl issue workaround
     Qt5GuiConfigExtras.cmake tries to use opengl (glu32). Prevent it from looking for it.
         Replace /usr/x86_64-w64-mingw32/lib/cmake/Qt5Gui/Qt5GuiConfigExtras.cmake:54
             _qt5gui_find_extra_libs(OPENGL "glu32;opengl32;gdi32;user32" "" "")
         with
             #_qt5gui_find_extra_libs(OPENGL "glu32;opengl32;gdi32;user32" "" "")
+    $ sed -i -e 's/_qt5gui_find_extra_libs(OPENGL "glu32;opengl32;gdi32;user32" "" "")/#_qt5gui_find_extra_libs(OPENGL "glu32;opengl32;gdi32;user32" "" "")/g' \
+        /usr/x86_64-w64-mingw32/lib/cmake/Qt5Gui/Qt5GuiConfigExtras.cmake
 
 11) Build cpp-ethereum:
     Clone the main repo
