@@ -94,7 +94,7 @@
     $ sudo cp libminiupnpc.a /usr/x86_64-w64-mingw32/lib/
     $ cd ..
 
-9) Build cryptopp562 for linux and windows
+9) Build cryptopp-5.6.2 for linux and windows
     $ mkdir cryptopp562
     $ cd cryptopp562
     $ wget http://www.cryptopp.com/cryptopp562.zip
@@ -104,7 +104,7 @@
     $ make static
     $ sudo mkdir /usr/include/cryptopp
     $ sudo cp *.h /usr/include/cryptopp
-    $ sudo cp libcrypto.a /usr/lib
+    $ sudo cp libcryptopp.a /usr/lib
     $ make clean
 
     Windows
@@ -119,13 +119,8 @@
 
     $ cd .. 
 
-10) Qt5.2.1 + cmake opengl issue workaround
-    Qt5GuiConfigExtras.cmake tries to use opengl (glu32). Prevent it from looking for it.
-        Replace /usr/x86_64-w64-mingw32/lib/cmake/Qt5Gui/Qt5GuiConfigExtras.cmake:54
-            _qt5gui_find_extra_libs(OPENGL "glu32;opengl32;gdi32;user32" "" "")
-        with
-            #_qt5gui_find_extra_libs(OPENGL "glu32;opengl32;gdi32;user32" "" "")
-    $ sed -i -e 's/_qt5gui_find_extra_libs(OPENGL "glu32;opengl32;gdi32;user32" "" "")/#_qt5gui_find_extra_libs(OPENGL "glu32;opengl32;gdi32;user32" "" "")/g' \
+10) Qt5.2.1 + cmake opengl issue workaround. Qt5GuiConfigExtras.cmake tries to use opengl (glu32). Prevent it from looking for it.
+    $ sed -i -e 's/_qt5gui_find_extra_libs(OPENGL/#_qt5gui_find_extra_libs(OPENGL/g' \
         /usr/x86_64-w64-mingw32/lib/cmake/Qt5Gui/Qt5GuiConfigExtras.cmake
 
 11) Build cpp-ethereum:

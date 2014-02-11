@@ -1,0 +1,34 @@
+1) Create fresh ubuntu 14.04 (Trusty Tahr) VM
+    http://cdimage.ubuntu.com/daily-live/current/trusty-desktop-amd64.iso
+
+2) Install packages
+    $ sudo apt-get update && sudo apt-get upgrade
+    $ sudo apt-get install build-essential libgmp-dev libgmp3-dev git cmake \
+        libboost-all-dev automake libtool libleveldb-dev yasm unzip lzip libminiupnpc-dev \
+        mingw-w64 gcc-mingw-w64 g++-mingw-w64 binutils-mingw-w64 qtbase5-dev qt5-default
+
+3) Build and install cryptopp-5.6.2 for linux
+    $ mkdir cryptopp562
+    $ cd cryptopp562
+    $ wget http://www.cryptopp.com/cryptopp562.zip
+    $ unzip cryptopp562.zip
+    $ make static
+    $ sudo mkdir /usr/include/cryptopp
+    $ sudo cp *.h /usr/include/cryptopp
+    $ sudo cp libcryptopp.a /usr/lib
+    $ cd
+
+4) Install prebuilt windows dependencies
+    $ git clone https://github.com/CodeShark/w64-libs.git
+    $ cd w64-libs/tools
+    $ sudo ./install-all ../libs /usr/x86_64-w64-mingw32
+    $ cd
+
+5) Build cpp-ethereum:
+    Clone the main repo
+    $ git clone https://github.com/ethereum/cpp-ethereum
+    $ mkdir cpp-ethereum-build
+    $ cd cpp-ethereum-build
+    $ cmake ../cpp-ethereum -DTARGET_PLATFORM=<target>
+        (<target> can be either linux or w64)
+    $ make
