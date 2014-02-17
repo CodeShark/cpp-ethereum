@@ -17,10 +17,28 @@ endif ()
 # Default TARGET_PLATFORM to "linux".
 set(TARGET_PLATFORM CACHE STRING "linux")
 if ("x${TARGET_PLATFORM}" STREQUAL "x")
-	set(TARGET_PLATFORM "linux")
+	if (APPLE)
+		set(TARGET_PLATFORM "osx")
+		set(OSX true)
+	else ()
+		set(TARGET_PLATFORM "linux")
+		set(LINUX true)
+	endif ()
+else ()
+	if ("${TARGET_PLATFORM}" STREQUAL "win64")
+		set(WIN64 true)
+	elseif ("${TARGET_PLATFORM}" STREQUAL "osx")
+		set(OSX true)
+	elseif ("${TARGET_PLATFORM}" STREQUAL "linux")
+		set(LINUX true)
+	endif ()
 endif ()
 
-if ("${TARGET_PLATFORM}" STREQUAL "w64")
+if (NOT (WIN64 OR OSX OR LINUX))
+	message(FATAL_ERROR "Unsupported target platform: ${TARGET_PLATFORM}")
+endif ()
+
+if (WIN64)
 	set(CMAKE_SYSTEM_NAME Windows)
 
 	set(CMAKE_CXX_LIBRARY_ARCHITECTURE	x86_64-w64-mingw32)
@@ -42,7 +60,7 @@ if ("${TARGET_PLATFORM}" STREQUAL "w64")
 
 	set(CMAKE_INSTALL_PREFIX	/usr/x86_64-w64-mingw32)
 	set(ETH_BUILD_PLATFORM "windows")
-else ()
+elseif (OSX OR LINUX)
 	set(ETH_BUILD_PLATFORM ${CMAKE_SYSTEM_NAME})
 endif()
 
@@ -83,8 +101,9 @@ else ()
 	message(FATAL_ERROR "Your C++ compiler does not support C++11.")
 endif ()
 
-if (${TARGET_PLATFORM} STREQUAL "w64")
-else ()
+if (WIN64)
+    # Do nothing. We'll assume Crypto++ has been installed in /usr/x86_64-w64-mingw32/
+elseif (OSX OR LINUX)
     # Look for available Crypto++ version and if it is >= 5.6.2
     find_path(ID cryptlib.h
         /usr/include/cryptopp
@@ -134,9 +153,9 @@ else ()
     # Always "found", given last block.
     include_directories(${CRYPTOPP_INCLUDE_DIR})
 
-	if (NOT APPLE)
-		link_directories(${CRYPTOPP_LIBRARIES})
-	endif ()
+    if (LINUX)
+        link_directories(${CRYPTOPP_LIBRARIES})
+    endif ()
 endif ()
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
