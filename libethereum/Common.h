@@ -46,6 +46,7 @@
 #include <list>
 #include <set>
 #include <string>
+#include <functional>
 #include <cassert>
 #include <sstream>
 #include <cstdint>
@@ -77,6 +78,9 @@ using u256s = std::vector<u256>;
 using u160s = std::vector<u160>;
 using u256Set = std::set<u256>;
 using u160Set = std::set<u160>;
+
+// Slots
+using bytes_slot = std::function<void(const bytes&)>;
 
 template <class T, class Out> inline void toBigEndian(T _val, Out& o_out);
 template <class T, class In> inline T fromBigEndian(In const& _bytes);

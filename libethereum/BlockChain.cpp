@@ -227,6 +227,7 @@ void BlockChain::import(bytes const& _block, Overlay const& _db)
 		m_lastBlockHash = newHash;
 		m_detailsDB->Put(m_writeOptions, ldb::Slice("best"), ldb::Slice((char const*)&newHash, 32));
 		clog(BlockChainNote) << "   Imported and best. Has" << (details(bi.parentHash).children.size() - 1) << "siblings.";
+                notifyNewBestBlock(_block);
 	}
 	else
 	{

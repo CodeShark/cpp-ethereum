@@ -15,7 +15,9 @@
 	along with cpp-ethereum.  If not, see <http://www.gnu.org/licenses/>.
 */
 /** @file BlockChain.h
- * @author Gav Wood <i@gavwood.com>
+ * @authors:
+ * 	Gav Wood <i@gavwood.com>
+ * 	Eric Lombrozo <elombrozo@gmail.com>
  * @date 2014
  */
 
@@ -24,6 +26,7 @@
 #include <mutex>
 #include "Common.h"
 #include "AddressState.h"
+#include "Signals.h"
 namespace ldb = leveldb;
 
 namespace eth
@@ -99,6 +102,11 @@ public:
 	void pushInterest(Address _a) { m_interest[_a]++; }
 	void popInterest(Address _a) { if (m_interest[_a] > 1) m_interest[_a]--; else if (m_interest[_a]) m_interest.erase(_a); }
 
+
+	/// Slot registration
+	void onNewBestBlock(bytes_slot slot) { notifyNewBestBlock.connect(slot); }
+	void clearSlots() { notifyNewBestBlock.clear(); }
+
 private:
 	void checkConsistency();
 
@@ -123,6 +131,9 @@ private:
 	ldb::WriteOptions m_writeOptions;
 
 	friend std::ostream& operator<<(std::ostream& _out, BlockChain const& _bc);
+
+	/// Signals
+	Signal<const bytes&> notifyNewBestBlock;
 };
 
 std::ostream& operator<<(std::ostream& _out, BlockChain const& _bc);
