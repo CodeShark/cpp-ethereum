@@ -52,6 +52,8 @@ Client::Client(std::string const& _clientVersion, Address _us, std::string const
 			work();
 		m_workState.store(Deleted, std::memory_order_release);
 	}));
+
+	m_bc.onNewBestBlock([this](const bytes& _block) { notifyNewBestBlock(_block); });
 }
 
 Client::~Client()

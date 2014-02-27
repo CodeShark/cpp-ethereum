@@ -66,6 +66,10 @@ int main(int argc, char* argv[])
 
         std::unique_ptr<eth::Client> client;
         client.reset(new Client("ethsocket"));
+	client->onNewBestBlock([&](const bytes& _block) {
+		auto hash = eth::sha3(_block);
+		cout << "New block: " << hash << endl;
+	});
 
         cout << "Address: " << endl << asHex(us.address().asArray()) << endl;
         client->startNetwork(listenPort, remoteHost, remotePort, mode, peers, publicIP, upnp);

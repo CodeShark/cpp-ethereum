@@ -15,7 +15,9 @@
 	along with cpp-ethereum.  If not, see <http://www.gnu.org/licenses/>.
 */
 /** @file Client.h
- * @author Gav Wood <i@gavwood.com>
+ * @authors:
+ * 	Gav Wood <i@gavwood.com>
+ *	Eric Lombrozo <elombrozo@gmail.com>
  * @date 2014
  */
 
@@ -30,6 +32,7 @@
 #include "State.h"
 #include "Dagger.h"
 #include "PeerNetwork.h"
+#include "Signals.h"
 
 namespace eth
 {
@@ -137,6 +140,10 @@ public:
 	/// Check the progress of the mining.
 	MineProgress miningProgress() const { return m_mineProgress; }
 
+	/// Slot registration
+        void onNewBestBlock(bytes_slot slot) { notifyNewBestBlock.connect(slot); }
+        void clearSlots() { notifyNewBestBlock.clear(); }
+
 private:
 	void work();
 
@@ -157,6 +164,9 @@ private:
 	mutable bool m_restartMining = false;
 
 	mutable bool m_changed;
+
+        /// Signals
+        Signal<const bytes&> notifyNewBestBlock;
 };
 
 inline ClientGuard::ClientGuard(Client* _c): m_client(_c)
