@@ -145,11 +145,13 @@ endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 
 add_subdirectory(secp256k1)
 add_subdirectory(libethereum)
-add_subdirectory(test)
-add_subdirectory(eth)
-if (NOT HEADLESS)
-	add_subdirectory(alethzero)
-endif ()
+add_subdirectory(testsignals)
+
+#add_subdirectory(test)
+#add_subdirectory(eth)
+#if (NOT HEADLESS)
+#	add_subdirectory(alethzero)
+#endif ()
 
 unset(HEADLESS CACHE)
 #unset(TARGET_PLATFORM CACHE)
