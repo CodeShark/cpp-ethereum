@@ -32,7 +32,6 @@
 #include "State.h"
 #include "Dagger.h"
 #include "PeerNetwork.h"
-#include "Signals.h"
 
 namespace eth
 {
@@ -141,8 +140,8 @@ public:
 	MineProgress miningProgress() const { return m_mineProgress; }
 
 	/// Slot registration
-        void onNewBestBlock(bytes_slot slot) { notifyNewBestBlock.connect(slot); }
-        void clearSlots() { notifyNewBestBlock.clear(); }
+        void onNewBestBlock(bytes_slot slot) { signalNewBestBlock.connect(slot); }
+        void clearSlots() { signalNewBestBlock.clear(); }
 
 private:
 	void work();
@@ -166,7 +165,7 @@ private:
 	mutable bool m_changed;
 
         /// Signals
-        Signal<const bytes&> notifyNewBestBlock;
+        Signal<const bytes&> signalNewBestBlock;
 };
 
 inline ClientGuard::ClientGuard(Client* _c): m_client(_c)

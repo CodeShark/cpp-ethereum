@@ -30,25 +30,27 @@ namespace eth
 template<typename... Values>
 class Signal
 {
+public:
+	void connect(std::function<void(Values...)> fn)    { fns.push_back(fn); }
+	void clear()                                       { fns.clear(); }
+
+	void operator()(Values... values)                  { for (auto fn: fns) fn(values...); }
+
 private:
 	std::list<std::function<void(Values...)>> fns;
-
-public:
-	void connect(std::function<void(Values...)> fn) { fns.push_back(fn); }
-	void clear() { fns.clear(); }
-	void operator()(Values... values) { for (auto fn: fns) fn(values...); }
 };
 
 template<>
 class Signal<void>
 {
+public:
+	void connect(std::function<void()> fn)             { fns.push_back(fn); }
+	void clear()                                       { fns.clear(); }
+
+	void operator()()                                  { for (auto fn: fns) fn(); }
+
 private:
 	std::list<std::function<void()>> fns;
-
-public:
-	void connect(std::function<void()> fn) { fns.push_back(fn); }
-	void clear() { fns.clear(); }
-	void operator()() { for (auto fn : fns) fn(); }
 };
 
 }

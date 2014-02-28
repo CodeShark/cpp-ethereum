@@ -84,6 +84,7 @@ if (APPLE)
 	)
 
 elseif (${TARGET_PLATFORM} STREQUAL "w64")
+	qt5_add_resources(ResourceSources res/alethzero.rc)
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-keep-inline-dllexport -static-libgcc -static-libstdc++ -static")
 	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-s -Wl,-subsystem,windows -mthreads -L/usr/x86_64-w64-mingw32/plugins/platforms")
 	target_link_libraries(${EXECUTEABLE} gcc)

@@ -104,8 +104,8 @@ public:
 
 
 	/// Slot registration
-	void onNewBestBlock(bytes_slot slot) { notifyNewBestBlock.connect(slot); }
-	void clearSlots() { notifyNewBestBlock.clear(); }
+	void onNewBestBlock(bytes_slot slot) { signalNewBestBlock.connect(slot); }
+	void clearSlots() { signalNewBestBlock.clear(); }
 
 private:
 	void checkConsistency();
@@ -133,7 +133,7 @@ private:
 	friend std::ostream& operator<<(std::ostream& _out, BlockChain const& _bc);
 
 	/// Signals
-	Signal<const bytes&> notifyNewBestBlock;
+	Signal<const bytes&> signalNewBestBlock;
 };
 
 std::ostream& operator<<(std::ostream& _out, BlockChain const& _bc);
