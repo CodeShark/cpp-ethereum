@@ -45,7 +45,7 @@ int main(int argc, char* argv[])
 	signal(SIGINT, &finish);
 
         unsigned short listenPort = 30303;
-        string remoteHost;
+        string remoteHost = "54.201.28.117";
         unsigned short remotePort = 30303;
         string dbPath;
         eth::uint mining = ~(eth::uint)0;
@@ -77,10 +77,13 @@ int main(int argc, char* argv[])
         }
 
         std::unique_ptr<eth::Client> client;
-        client.reset(new Client("ethsocket"));
+        client.reset(new Client("Eric testing signals..."));
 	client->connectNewBestBlock([&](const bytes& _block) {
 		auto hash = eth::sha3(_block);
 		cout << "New block: " << hash << endl;
+	});
+	client->connectBalanceChanged([&](const Address& _address, const bigint& _delta) {
+		cout << "Address " << asHex(_address.asArray()) << " balance changed by " << _delta << endl;
 	});
 
         cout << "Address: " << endl << asHex(us.address().asArray()) << endl;

@@ -158,7 +158,15 @@ public:
         bool disconnectNewBestBlock(uint64_t connection) { return signalNewBestBlock.disconnect(connection); }
         void clearNewBestBlock() { signalNewBestBlock.clear(); }
 
-        void clearAllSlots() { clearNewBestBlock(); }
+	uint64_t connectBalanceChanged(State::balance_changed_slot slot) { return signalBalanceChanged.connect(slot); }
+	bool disconnectBalanceChanged(uint64_t connection) { return signalBalanceChanged.disconnect(connection); }
+	void clearBalanceChanged() { signalBalanceChanged.clear(); }
+
+        void clearAllSlots()
+	{
+		clearNewBestBlock();
+		clearBalanceChanged();
+	}
 
 private:
 	void work();
@@ -184,6 +192,7 @@ private:
 
         /// Signals
         Signal<const bytes&> signalNewBestBlock;
+	Signal<const Address&, const bigint&> signalBalanceChanged;
 };
 
 inline ClientGuard::ClientGuard(Client* _c): m_client(_c)

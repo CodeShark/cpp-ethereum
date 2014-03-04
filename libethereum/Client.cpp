@@ -78,10 +78,12 @@ Client::Client(std::string const& _clientVersion, Address _us, std::string const
 	}));
 
 	m_bc.connectNewBestBlock([this](const bytes& _block) { signalNewBestBlock(_block); });
+	m_preMine.connectBalanceChanged([this](const Address& _address, const bigint& _delta) { signalBalanceChanged(_address, _delta); });
 }
 
 Client::~Client()
 {
+	m_preMine.clearAllSlots();
 	m_bc.clearAllSlots();
 
 	if (m_workState.load(std::memory_order_acquire) == Active)

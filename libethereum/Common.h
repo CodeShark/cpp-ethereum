@@ -84,6 +84,7 @@ using u160Set = std::set<u160>;
 
 // Slots
 using bytes_slot = std::function<void(const bytes&)>;
+using u256_slot = std::function<void(const u256&)>;
 
 template <class T, class Out> inline void toBigEndian(T _val, Out& o_out);
 template <class T, class In> inline T fromBigEndian(In const& _bytes);

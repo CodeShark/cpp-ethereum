@@ -544,7 +544,10 @@ void State::addBalance(Address _id, u256 _amount)
 	if (it == m_cache.end())
 		m_cache[_id] = AddressState(_amount, 0);
 	else
+	{
 		it->second.addBalance(_amount);
+		signalBalanceChanged(_id, _amount);
+	}
 }
 
 void State::subBalance(Address _id, bigint _amount)
@@ -554,7 +557,11 @@ void State::subBalance(Address _id, bigint _amount)
 	if (it == m_cache.end() || (bigint)it->second.balance() < _amount)
 		throw NotEnoughCash();
 	else
-		it->second.addBalance(-_amount);
+	{
+		bigint delta = -_amount;
+		it->second.addBalance(delta);
+		signalBalanceChanged(_id, delta);
+	}
 }
 
 u256 State::transactionsFrom(Address _id) const

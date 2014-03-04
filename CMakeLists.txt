@@ -150,9 +150,9 @@ add_subdirectory(testsignals)
 
 #add_subdirectory(test)
 #add_subdirectory(eth)
-#if (NOT HEADLESS)
-#	add_subdirectory(alethzero)
-#endif ()
+if (NOT HEADLESS)
+	add_subdirectory(alethzero)
+endif ()
 
 unset(HEADLESS CACHE)
 #unset(TARGET_PLATFORM CACHE)

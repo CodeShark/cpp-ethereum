@@ -35,6 +35,7 @@
 #include "FeeStructure.h"
 #include "Dagger.h"
 #include "ExtVMFace.h"
+#include "Signals.h"
 
 namespace eth
 {
@@ -175,6 +176,14 @@ public:
 	/// Get the fee associated for a normal transaction.
 	u256 fee() const { return m_fees.m_txFee; }
 
+	// Slot registration
+	using balance_changed_slot = std::function<void(const Address&, const bigint&)>;
+	uint64_t connectBalanceChanged(balance_changed_slot slot) { return signalBalanceChanged.connect(slot); }
+	bool disconnectBalanceChanged(uint64_t connection) { return signalBalanceChanged.disconnect(connection); }
+	void clearBalanceChanged() { signalBalanceChanged.clear(); }
+
+	void clearAllSlots() { clearBalanceChanged(); }
+
 private:
 	/// Fee-adder on destruction RAII class.
 	struct MinerFeeAdder
@@ -242,6 +251,9 @@ private:
 	static std::string c_defaultPath;
 
 	friend std::ostream& operator<<(std::ostream& _out, State const& _s);
+
+	// Signals
+	Signal<const Address&, const bigint&> signalBalanceChanged;
 };
 
 class ExtVM: public ExtVMFace
