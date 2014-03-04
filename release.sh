@@ -1,7 +1,12 @@
 #!/bin/bash
 
 dist="saucy"
-version=$1
+version=$(grep "define ETH_VERSION" libethereum/Common.h | cut -d ' ' -f 3)
+branch="$(git branch | grep \* | cut -c 3-)"
+
+if [[ ! "$1" == "" ]]; then
+	version=$1
+fi
 
 if [[ ! "$3" == "" ]]; then
 	if [[ ! "$4" == "" ]]; then
@@ -25,13 +30,18 @@ cd /tmp
 echo Checking out...
 git clone $opwd
 cd cpp-ethereum
+git checkout "$branch"
 
-if [ "$1" == "" ]; then
-	archdir="cpp-ethereum-$(date +%Y%m%d)"
-else
-	archdir="cpp-ethereum-$version"
-fi
+archdir="cpp-ethereum-$version"
 archfile="$archdir.tar.bz2"
+
+echo Making BuildInfo...
+mkdir build
+cd build
+cmake ..
+cd ..
+cp build/BuildInfo.h .
+rm -rf build
 
 echo Cleaning backup files...
 find . | grep \~ | xargs rm -f
@@ -49,6 +59,7 @@ mv cpp-ethereum $archdir
 
 echo Creating archive...
 tar c $archdir | bzip2 -- > $archfile
+shasum $archfile
 
 [[ ! "$version" == "" ]] && ln -sf $archfile "cpp-ethereum_$version.orig.tar.bz2"
 
