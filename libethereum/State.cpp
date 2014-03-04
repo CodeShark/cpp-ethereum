@@ -68,6 +68,7 @@ State::State(Address _coinbaseAddress, Overlay const& _db):
 	m_state(&m_db),
 	m_ourAddress(_coinbaseAddress)
 {
+	cnote << "First State constructor. State = " << (uint64_t)(this);
 	m_blockReward = 1500 * finney;
 	m_fees.setMultiplier(100 * szabo);
 
@@ -98,6 +99,7 @@ State::State(State const& _s):
 	m_fees(_s.m_fees),
 	m_blockReward(_s.m_blockReward)
 {
+	cnote << "Second State constructor. State = " << (uint64_t)(this);
 }
 
 State& State::operator=(State const& _s)
@@ -545,6 +547,8 @@ void State::addBalance(Address _id, u256 _amount)
 		m_cache[_id] = AddressState(_amount, 0);
 	else
 	{
+		cnote << "State object address: " << (uint64_t)(this);
+		cnote << "addBalance - listeners: " << signalBalanceChanged.size();
 		it->second.addBalance(_amount);
 		signalBalanceChanged(_id, _amount);
 	}
@@ -558,6 +562,7 @@ void State::subBalance(Address _id, bigint _amount)
 		throw NotEnoughCash();
 	else
 	{
+		cnote << "subBalance - listeners: " << signalBalanceChanged.size();
 		bigint delta = -_amount;
 		it->second.addBalance(delta);
 		signalBalanceChanged(_id, delta);
@@ -639,6 +644,7 @@ void State::unapplyRewards(Addresses const& _uncleAddresses)
 
 void State::executeBare(Transaction const& _t, Address _sender)
 {
+	signalExecutingTx(_t);
 #if ETH_DEBUG
 	commit();
 	clog(StateChat) << "State:" << rootHash();

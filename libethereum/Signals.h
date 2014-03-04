@@ -32,8 +32,11 @@ template<typename... Values>
 class Signal
 {
 public:
+	~Signal() { clear(); }
+
 	uint64_t connect(std::function<void(Values...)> fn);
 	bool disconnect(uint64_t connection);
+	size_t size() const;
 	void clear();
 
 	void operator()(Values... values) const;
@@ -60,6 +63,13 @@ inline bool Signal<Values...>::disconnect(uint64_t connection)
 }
 
 template<typename... Values>
+inline size_t Signal<Values...>::size() const
+{
+	std::lock_guard<std::recursive_mutex> lock(m_mutex);
+	return m_fnMap.size();
+}
+
+template<typename... Values>
 inline void Signal<Values...>::clear()
 {
 	std::lock_guard<std::recursive_mutex> lock(m_mutex);
@@ -79,8 +89,11 @@ template<>
 class Signal<void>
 {
 public:
+	~Signal() { clear(); }
+
 	uint64_t connect(std::function<void()> fn);
 	bool disconnect(uint64_t connection);
+	size_t size() const;
 	void clear();
 
 	void operator()() const;
@@ -104,6 +117,13 @@ inline bool Signal<>::disconnect(uint64_t connection)
 {
 	std::lock_guard<std::recursive_mutex> lock(m_mutex);
 	return m_fnMap.erase(connection);
+}
+
+template<>
+inline size_t Signal<>::size() const
+{
+	std::lock_guard<std::recursive_mutex> lock(m_mutex);
+	return m_fnMap.size();
 }
 
 template<>

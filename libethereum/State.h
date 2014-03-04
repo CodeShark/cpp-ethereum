@@ -177,12 +177,19 @@ public:
 	u256 fee() const { return m_fees.m_txFee; }
 
 	// Slot registration
-	using balance_changed_slot = std::function<void(const Address&, const bigint&)>;
 	uint64_t connectBalanceChanged(balance_changed_slot slot) { return signalBalanceChanged.connect(slot); }
 	bool disconnectBalanceChanged(uint64_t connection) { return signalBalanceChanged.disconnect(connection); }
 	void clearBalanceChanged() { signalBalanceChanged.clear(); }
 
-	void clearAllSlots() { clearBalanceChanged(); }
+	uint64_t connectExecutingTx(tx_slot slot) { return signalExecutingTx.connect(slot); }
+	bool disconnectExecutingTx(uint64_t connection) { return signalExecutingTx.disconnect(connection); }
+	void clearExecutingTx() { signalExecutingTx.clear(); }
+
+	void clearAllSlots()
+	{
+		clearBalanceChanged();
+		clearExecutingTx();
+	}
 
 private:
 	/// Fee-adder on destruction RAII class.
@@ -254,6 +261,7 @@ private:
 
 	// Signals
 	Signal<const Address&, const bigint&> signalBalanceChanged;
+	Signal<const Transaction&> signalExecutingTx;
 };
 
 class ExtVM: public ExtVMFace

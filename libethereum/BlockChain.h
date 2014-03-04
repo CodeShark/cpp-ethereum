@@ -26,6 +26,7 @@
 #include <mutex>
 #include "Common.h"
 #include "AddressState.h"
+#include "Transaction.h"
 #include "Signals.h"
 namespace ldb = leveldb;
 
@@ -108,7 +109,20 @@ public:
 	bool disconnectNewBestBlock(uint64_t connection) { return signalNewBestBlock.disconnect(connection); }
 	void clearNewBestBlock() { signalNewBestBlock.clear(); }
 
-	void clearAllSlots() { clearNewBestBlock(); }
+	uint64_t connectBalanceChanged(balance_changed_slot slot) { return signalBalanceChanged.connect(slot); }
+	bool disconnectBalanceChanged(uint64_t connection) { return signalBalanceChanged.disconnect(connection); }
+	void clearBalanceChanged() { signalBalanceChanged.clear(); }
+
+	uint64_t connectExecutingTx(tx_slot slot) { return signalExecutingTx.connect(slot); }
+	bool disconnectExecutingTx(uint64_t connection) { return signalExecutingTx.disconnect(connection); }
+	void clearExecutingTx() { signalExecutingTx.clear(); }
+
+	void clearAllSlots()
+	{
+		clearNewBestBlock();
+		clearBalanceChanged();
+		clearExecutingTx();
+	}
 
 private:
 	void checkConsistency();
@@ -137,6 +151,8 @@ private:
 
 	/// Signals
 	Signal<const bytes&> signalNewBestBlock;
+	Signal<const Address&, const bigint&> signalBalanceChanged;
+	Signal<const Transaction&> signalExecutingTx;
 };
 
 std::ostream& operator<<(std::ostream& _out, BlockChain const& _bc);

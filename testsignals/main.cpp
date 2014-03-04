@@ -80,10 +80,19 @@ int main(int argc, char* argv[])
         client.reset(new Client("Eric testing signals..."));
 	client->connectNewBestBlock([&](const bytes& _block) {
 		auto hash = eth::sha3(_block);
+		cout << "===================================" << endl; 
 		cout << "New block: " << hash << endl;
+		cout << "===================================" << endl; 
 	});
 	client->connectBalanceChanged([&](const Address& _address, const bigint& _delta) {
+		cout << "===================================" << endl; 
 		cout << "Address " << asHex(_address.asArray()) << " balance changed by " << _delta << endl;
+		cout << "===================================" << endl; 
+	});
+	client->connectExecutingTx([&](const Transaction& _tr) {
+		cout << "===================================" << endl;
+		cout << "Executing transaction: " << _tr << endl;
+		cout << "===================================" << endl;
 	});
 
         cout << "Address: " << endl << asHex(us.address().asArray()) << endl;

@@ -82,10 +82,6 @@ using u160s = std::vector<u160>;
 using u256Set = std::set<u256>;
 using u160Set = std::set<u160>;
 
-// Slots
-using bytes_slot = std::function<void(const bytes&)>;
-using u256_slot = std::function<void(const u256&)>;
-
 template <class T, class Out> inline void toBigEndian(T _val, Out& o_out);
 template <class T, class In> inline T fromBigEndian(In const& _bytes);
 
@@ -211,6 +207,11 @@ using Secret = h256;
 using Public = h512;
 using Address = h160;
 using Addresses = h160s;
+
+// Slots
+using bytes_slot = std::function<void(const bytes&)>;
+using u256_slot = std::function<void(const u256&)>;
+using balance_changed_slot = std::function<void(const Address&, const bigint&)>;
 
 // Map types.
 using StringMap = std::map<std::string, std::string>;

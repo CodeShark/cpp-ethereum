@@ -64,6 +64,7 @@ struct Transaction
 };
 
 using Transactions = std::vector<Transaction>;
+using tx_slot = std::function<void(const Transaction&)>;
 
 inline std::ostream& operator<<(std::ostream& _out, Transaction const& _t)
 {

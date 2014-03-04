@@ -149,7 +149,7 @@ void BlockChain::import(bytes const& _block, Overlay const& _db)
 #if ETH_CATCH
 	catch (Exception const& _e)
 	{
-		clog(BlockChainNote) << "   Malformed block (" << _e.description() << ").";
+		clog(BlockChainNote) << "   Malformed block (" << _e.description() << ") first instance.";
 		throw;
 	}
 #endif
@@ -184,6 +184,8 @@ void BlockChain::import(bytes const& _block, Overlay const& _db)
 
 		// Check transactions are valid and that they result in a state equivalent to our state_root.
 		State s(bi.coinbaseAddress, _db);
+		cnote << "About to connect to signal...";
+		s.connectBalanceChanged([&](const Address& _address, const bigint& _delta) { signalBalanceChanged(_address, _delta); });
 		s.sync(*this, bi.parentHash);
 
 		// Get total difficulty increase and update state, checking it.
@@ -214,7 +216,7 @@ void BlockChain::import(bytes const& _block, Overlay const& _db)
 #if ETH_CATCH
 	catch (Exception const& _e)
 	{
-		clog(BlockChainNote) << "   Malformed block (" << _e.description() << ").";
+		clog(BlockChainNote) << "   Malformed block (" << _e.description() << ") second instance.";
 		throw;
 	}
 #endif

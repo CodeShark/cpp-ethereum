@@ -62,6 +62,10 @@ Client::Client(std::string const& _clientVersion, Address _us, std::string const
 		Defaults::setDBPath(_dbPath);
 	m_vc.setOk();
 
+	m_bc.connectNewBestBlock([&](const bytes& _block) { signalNewBestBlock(_block); });
+	m_bc.connectBalanceChanged([&](const Address& _address, const bigint& _delta) { signalBalanceChanged(_address, _delta); });
+	m_bc.connectExecutingTx([&](const Transaction& _tr) { signalExecutingTx(_tr); });
+
 	// Synchronise the state according to the head of the block chain.
 	// TODO: currently it contains keys for *all* blocks. Make it remove old ones.
 	m_preMine.sync(m_bc);
@@ -76,14 +80,10 @@ Client::Client(std::string const& _clientVersion, Address _us, std::string const
 			work();
 		m_workState.store(Deleted, std::memory_order_release);
 	}));
-
-	m_bc.connectNewBestBlock([this](const bytes& _block) { signalNewBestBlock(_block); });
-	m_preMine.connectBalanceChanged([this](const Address& _address, const bigint& _delta) { signalBalanceChanged(_address, _delta); });
 }
 
 Client::~Client()
 {
-	m_preMine.clearAllSlots();
 	m_bc.clearAllSlots();
 
 	if (m_workState.load(std::memory_order_acquire) == Active)
@@ -128,16 +128,16 @@ void Client::stopMining()
 
 void Client::transact(Secret _secret, Address _dest, u256 _amount, u256s _data)
 {
-	lock_guard<recursive_mutex> l(m_lock);
-	Transaction t;
-	t.nonce = m_postMine.transactionsFrom(toAddress(_secret));
-	t.receiveAddress = _dest;
-	t.value = _amount;
-	t.data = _data;
-	t.sign(_secret);
-	cnote << "New transaction " << t;
-	m_tq.attemptImport(t.rlp());
-	m_changed = true;
+        lock_guard<recursive_mutex> l(m_lock);
+        Transaction t;
+        t.nonce = m_postMine.transactionsFrom(toAddress(_secret));
+        t.receiveAddress = _dest;
+        t.value = _amount;
+        t.data = _data;
+        t.sign(_secret);
+        cnote << "New transaction " << t;
+        m_tq.attemptImport(t.rlp());
+        m_changed = true;
 }
 
 void Client::work()
