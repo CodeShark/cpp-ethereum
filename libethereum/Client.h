@@ -153,9 +153,12 @@ public:
 	/// Check the progress of the mining.
 	MineProgress miningProgress() const { return m_mineProgress; }
 
-	/// Slot registration
-        void onNewBestBlock(bytes_slot slot) { signalNewBestBlock.connect(slot); }
-        void clearSlots() { signalNewBestBlock.clear(); }
+        /// Slot registration
+        uint64_t connectNewBestBlock(bytes_slot slot) { return signalNewBestBlock.connect(slot); }
+        bool disconnectNewBestBlock(uint64_t connection) { return signalNewBestBlock.disconnect(connection); }
+        void clearNewBestBlock() { signalNewBestBlock.clear(); }
+
+        void clearAllSlots() { clearNewBestBlock(); }
 
 private:
 	void work();

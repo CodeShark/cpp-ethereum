@@ -77,11 +77,13 @@ Client::Client(std::string const& _clientVersion, Address _us, std::string const
 		m_workState.store(Deleted, std::memory_order_release);
 	}));
 
-	m_bc.onNewBestBlock([this](const bytes& _block) { signalNewBestBlock(_block); });
+	m_bc.connectNewBestBlock([this](const bytes& _block) { signalNewBestBlock(_block); });
 }
 
 Client::~Client()
 {
+	m_bc.clearAllSlots();
+
 	if (m_workState.load(std::memory_order_acquire) == Active)
 		m_workState.store(Deleting, std::memory_order_release);
 	while (m_workState.load(std::memory_order_acquire) != Deleted)

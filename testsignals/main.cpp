@@ -27,11 +27,23 @@
 #include "State.h"
 #include "FileSystem.h"
 
+#include <signal.h>
+
 using namespace std;
 using namespace eth;
 
+bool g_bShutdown = false;
+
+void finish(int sig)
+{
+	std::cout << "Stopping..." << std::endl;
+	g_bShutdown = true;
+}
+
 int main(int argc, char* argv[])
 {
+	signal(SIGINT, &finish);
+
         unsigned short listenPort = 30303;
         string remoteHost;
         unsigned short remotePort = 30303;
@@ -66,7 +78,7 @@ int main(int argc, char* argv[])
 
         std::unique_ptr<eth::Client> client;
         client.reset(new Client("ethsocket"));
-	client->onNewBestBlock([&](const bytes& _block) {
+	client->connectNewBestBlock([&](const bytes& _block) {
 		auto hash = eth::sha3(_block);
 		cout << "New block: " << hash << endl;
 	});
@@ -76,12 +88,14 @@ int main(int argc, char* argv[])
         eth::uint n = client->blockChain().details().number;
         if (mining)
                 client->startMining();
-        while (true)
+        while (!g_bShutdown)
         {
                 if (client->blockChain().details().number - n == mining)
                         client->stopMining();
                 this_thread::sleep_for(chrono::milliseconds(100));
         }
+
+	client->clearAllSlots();
 
         return 0;
 }
