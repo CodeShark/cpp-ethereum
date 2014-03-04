@@ -22,7 +22,8 @@
 #pragma once
 
 #include <functional>
-#include <list>
+#include <map>
+#include <mutex>
 
 namespace eth
 {
@@ -31,15 +32,95 @@ template<typename... Values>
 class Signal
 {
 public:
-	void connect(std::function<void(Values...)> fn)    { fns.push_back(fn); }
-	void clear()                                       { fns.clear(); }
+	uint64_t connect(std::function<void(Values...)> fn);
+	bool disconnect(uint64_t connection);
+	void clear();
 
-	void operator()(Values... values)                  { for (auto fn: fns) fn(values...); }
+	void operator()(Values... values) const;
 
 private:
-	std::list<std::function<void(Values...)>> fns;
+	mutable std::recursive_mutex m_mutex;
+	uint64_t m_nextConnection;
+	std::map<uint64_t, std::function<void(Values...)>> m_fnMap;
 };
 
+template<typename... Values>
+inline uint64_t Signal<Values...>::connect(std::function<void(Values...)> fn)
+{
+	std::lock_guard<std::recursive_mutex> lock(m_mutex);
+	m_fnMap[m_nextConnection] = fn;
+	return m_nextConnection++;
+}
+
+template<typename... Values>
+inline bool Signal<Values...>::disconnect(uint64_t connection)
+{
+	std::lock_guard<std::recursive_mutex> lock(m_mutex);
+	return m_fnMap.erase(connection);
+}
+
+template<typename... Values>
+inline void Signal<Values...>::clear()
+{
+	std::lock_guard<std::recursive_mutex> lock(m_mutex);
+	m_fnMap.clear();
+}
+
+template<typename... Values>
+inline void Signal<Values...>::operator()(Values... values) const
+{
+	std::lock_guard<std::recursive_mutex> lock(m_mutex);
+	for (auto& i: m_fnMap) { i.second(values...); }
+}
+
+
+
+template<>
+class Signal<void>
+{
+public:
+	uint64_t connect(std::function<void()> fn);
+	bool disconnect(uint64_t connection);
+	void clear();
+
+	void operator()() const;
+
+private:
+	mutable std::recursive_mutex m_mutex;
+	uint64_t m_nextConnection;
+	std::map<uint64_t, std::function<void()>> m_fnMap;
+};
+
+template<>
+inline uint64_t Signal<>::connect(std::function<void()> fn)
+{
+	std::lock_guard<std::recursive_mutex> lock(m_mutex);
+	m_fnMap[m_nextConnection] = fn;
+	return m_nextConnection++;
+}
+
+template<>
+inline bool Signal<>::disconnect(uint64_t connection)
+{
+	std::lock_guard<std::recursive_mutex> lock(m_mutex);
+	return m_fnMap.erase(connection);
+}
+
+template<>
+inline void Signal<>::clear()
+{
+	std::lock_guard<std::recursive_mutex> lock(m_mutex);
+	m_fnMap.clear();
+}
+
+template<>
+inline void Signal<>::operator()() const
+{
+	std::lock_guard<std::recursive_mutex> lock(m_mutex);
+	for (auto& i: m_fnMap) { i.second(); }
+}
+
+/*
 template<>
 class Signal<void>
 {
@@ -52,5 +133,5 @@ public:
 private:
 	std::list<std::function<void()>> fns;
 };
-
+*/
 }
