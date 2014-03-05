@@ -43,7 +43,7 @@ public:
 
 private:
 	mutable std::recursive_mutex m_mutex;
-	uint64_t m_nextConnection;
+	uint64_t m_nextConnection = 0;
 	std::map<uint64_t, std::function<void(Values...)>> m_fnMap;
 };
 
@@ -100,7 +100,7 @@ public:
 
 private:
 	mutable std::recursive_mutex m_mutex;
-	uint64_t m_nextConnection;
+	uint64_t m_nextConnection = 0;
 	std::map<uint64_t, std::function<void()>> m_fnMap;
 };
 
