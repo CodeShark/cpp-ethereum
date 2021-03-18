@@ -1,1082 +1,844 @@
-/*
-	This file is part of cpp-ethereum.
+// Aleth: Ethereum C++ client, tools and libraries.
+// Copyright 2013-2019 Aleth Authors.
+// Licensed under the GNU General Public License, Version 3.
 
-	cpp-ethereum is free software: you can redistribute it and/or modify
-	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation, either version 2 of the License, or
-	(at your option) any later version.
-
-	Foobar is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
-
-	You should have received a copy of the GNU General Public License
-	along with Foobar.  If not, see <http://www.gnu.org/licenses/>.
-*/
-/** @file State.cpp
- * @author Gav Wood <i@gavwood.com>
- * @date 2014
- */
-
-#include <secp256k1.h>
-#include <boost/filesystem.hpp>
-#if WIN32
-#pragma warning(push)
-#pragma warning(disable:4244)
-#else
-#pragma GCC diagnostic ignored "-Wunused-function"
-#endif
-#include <sha.h>
-#include <sha3.h>
-#include <ripemd.h>
-#if WIN32
-#pragma warning(pop)
-#else
-#endif
-#include <time.h>
-#include <random>
-#include "BlockChain.h"
-#include "Instruction.h"
-#include "Exceptions.h"
-#include "Dagger.h"
 #include "State.h"
+
+#include "Block.h"
+#include "BlockChain.h"
+#include "ExtVM.h"
+#include "TransactionQueue.h"
+#include "DatabasePaths.h"
+#include <libdevcore/Assertions.h>
+#include <libdevcore/DBFactory.h>
+#include <libdevcore/TrieHash.h>
+#include <libevm/VMFactory.h>
+#include <boost/filesystem.hpp>
+
 using namespace std;
-using namespace eth;
+using namespace dev;
+using namespace dev::eth;
+namespace fs = boost::filesystem;
 
-u256 const State::c_stepFee = 10000;
-u256 const State::c_dataFee = 20000;
-u256 const State::c_memoryFee = 30000;
-u256 const State::c_extroFee = 40000;
-u256 const State::c_cryptoFee = 50000;
-u256 const State::c_newContractFee = 60000;
-u256 const State::c_txFee = 0;
-u256 const State::c_blockReward = 1000000000;
-
-Overlay State::openDB(std::string _path, bool _killExisting)
+State::State(u256 const& _accountStartNonce, OverlayDB const& _db, BaseState _bs):
+    m_db(_db),
+    m_state(&m_db),
+    m_accountStartNonce(_accountStartNonce)
 {
-	if (_path.empty())
-		_path = Defaults::s_dbPath;
-	boost::filesystem::create_directory(_path);
-	if (_killExisting)
-		boost::filesystem::remove_all(_path + "/state");
-
-	ldb::Options o;
-	o.create_if_missing = true;
-	ldb::DB* db = nullptr;
-	ldb::DB::Open(o, _path + "/state", &db);
-	return Overlay(db);
+    if (_bs != BaseState::PreExisting)
+        // Initialise to the state entailed by the genesis block; this guarantees the trie is built correctly.
+        m_state.init();
 }
 
-State::State(Address _coinbaseAddress, Overlay const& _db): m_db(_db), m_state(&m_db), m_ourAddress(_coinbaseAddress)
+State::State(State const& _s):
+    m_db(_s.m_db),
+    m_state(&m_db, _s.m_state.root(), Verification::Skip),
+    m_cache(_s.m_cache),
+    m_unchangedCacheEntries(_s.m_unchangedCacheEntries),
+    m_nonExistingAccountsCache(_s.m_nonExistingAccountsCache),
+    m_touched(_s.m_touched),
+    m_unrevertablyTouched(_s.m_unrevertablyTouched),
+    m_accountStartNonce(_s.m_accountStartNonce)
+{}
+
+OverlayDB State::openDB(fs::path const& _basePath, h256 const& _genesisHash, WithExisting _we)
 {
-	secp256k1_start();
-	m_state.init();
-	m_previousBlock = BlockInfo::genesis();
-	resetCurrent();
+    DatabasePaths const dbPaths{_basePath, _genesisHash};
+    if (db::isDiskDatabase())
+    {
+        if (_we == WithExisting::Kill)
+        {
+            clog(VerbosityInfo, "statedb") << "Deleting state database: " << dbPaths.statePath();
+            fs::remove_all(dbPaths.statePath());
+        }
+
+        clog(VerbosityDebug, "statedb")
+            << "Verifying path exists (and creating if not present): " << dbPaths.chainPath();
+        fs::create_directories(dbPaths.chainPath());
+        clog(VerbosityDebug, "statedb")
+            << "Ensuring permissions are set for path: " << dbPaths.chainPath();
+        DEV_IGNORE_EXCEPTIONS(fs::permissions(dbPaths.chainPath(), fs::owner_all));
+    }
+
+    try
+    {
+        clog(VerbosityTrace, "statedb") << "Opening state database";
+        std::unique_ptr<db::DatabaseFace> db = db::DBFactory::create(dbPaths.statePath());
+        return OverlayDB(std::move(db));
+    }
+    catch (boost::exception const& ex)
+    {
+        if (db::isDiskDatabase())
+        {
+            clog(VerbosityError, "statedb")
+                << "Error opening state database: " << dbPaths.statePath();
+            db::DatabaseStatus const dbStatus =
+                *boost::get_error_info<db::errinfo_dbStatusCode>(ex);
+            if (fs::space(dbPaths.statePath()).available < 1024)
+            {
+                clog(VerbosityError, "statedb")
+                    << "Not enough available space found on hard drive. Please free some up and "
+                       "then re-run. Bailing.";
+                BOOST_THROW_EXCEPTION(NotEnoughAvailableSpace());
+            }
+            else if (dbStatus == db::DatabaseStatus::Corruption)
+            {
+                clog(VerbosityError, "statedb")
+                    << "Database corruption detected. Please see the exception for corruption "
+                       "details. Exception: "
+                    << boost::diagnostic_information(ex);
+                BOOST_THROW_EXCEPTION(DatabaseCorruption());
+            }
+            else if (dbStatus == db::DatabaseStatus::IOError)
+            {
+                clog(VerbosityError, "statedb") << "Database already open. You appear to have "
+                                                   "another instance of Aleth running.";
+                BOOST_THROW_EXCEPTION(DatabaseAlreadyOpen());
+            }
+        }
+        clog(VerbosityError, "statedb")
+            << "Unknown error encountered when opening state database. Exception details: "
+            << boost::diagnostic_information(ex);
+        throw;
+    }
 }
 
-void State::ensureCached(Address _a, bool _requireMemory, bool _forceCreate) const
+void State::populateFrom(AccountMap const& _map)
 {
-	auto it = m_cache.find(_a);
-	if (it == m_cache.end())
-	{
-		// populate basic info.
-		string stateBack = m_state.at(_a);
-		if (stateBack.empty() && !_forceCreate)
-			return;
-		RLP state(stateBack);
-		AddressState s;
-		if (state.isNull())
-			s = AddressState(0, 0);
-		else if (state.itemCount() == 2)
-			s = AddressState(state[0].toInt<u256>(), state[1].toInt<u256>());
-		else
-			s = AddressState(state[0].toInt<u256>(), state[1].toInt<u256>(), state[2].toHash<h256>());
-		bool ok;
-		tie(it, ok) = m_cache.insert(make_pair(_a, s));
-	}
-	if (_requireMemory && !it->second.haveMemory())
-	{
-		// Populate memory.
-		assert(it->second.type() == AddressType::Contract);
-		TrieDB<u256, Overlay> memdb(const_cast<Overlay*>(&m_db), it->second.oldRoot());		// promise we won't alter the overlay! :)
-		map<u256, u256>& mem = it->second.takeMemory();
-		for (auto const& i: memdb)
-			mem[i.first] = RLP(i.second).toInt<u256>();
-	}
+    eth::commit(_map, m_state);
+    commit(State::CommitBehaviour::KeepEmptyAccounts);
 }
 
-void State::commit()
+u256 const& State::requireAccountStartNonce() const
 {
-	for (auto const& i: m_cache)
-		if (i.second.type() == AddressType::Dead)
-			m_state.remove(i.first);
-		else
-		{
-			RLPStream s(i.second.type() == AddressType::Contract ? 3 : 2);
-			s << i.second.balance() << i.second.nonce();
-			if (i.second.type() == AddressType::Contract)
-			{
-				if (i.second.haveMemory())
-				{
-					TrieDB<u256, Overlay> memdb(&m_db);
-					memdb.init();
-					for (auto const& j: i.second.memory())
-						if (j.second)
-							memdb.insert(j.first, rlp(j.second));
-					s << memdb.root();
-				}
-				else
-					s << i.second.oldRoot();
-			}
-			m_state.insert(i.first, &s.out());
-		}
-	m_cache.clear();
+    if (m_accountStartNonce == Invalid256)
+        BOOST_THROW_EXCEPTION(InvalidAccountStartNonceInState());
+    return m_accountStartNonce;
 }
 
-bool State::sync(BlockChain const& _bc)
+void State::noteAccountStartNonce(u256 const& _actual)
 {
-	return sync(_bc, _bc.currentHash());
+    if (m_accountStartNonce == Invalid256)
+        m_accountStartNonce = _actual;
+    else if (m_accountStartNonce != _actual)
+        BOOST_THROW_EXCEPTION(IncorrectAccountStartNonceInState());
 }
 
-bool State::sync(BlockChain const& _bc, h256 _block)
+void State::removeEmptyAccounts()
 {
-	bool ret = false;
-	// BLOCK
-	BlockInfo bi;
-	try
-	{
-		auto b = _bc.block(_block);
-		bi.populate(b);
-		bi.verifyInternals(_bc.block(_block));
-	}
-	catch (...)
-	{
-		// TODO: Slightly nicer handling? :-)
-		cerr << "ERROR: Corrupt block-chain! Delete your block-chain DB and restart." << endl;
-		exit(1);
-	}
+    for (auto& i: m_cache)
+        if (i.second.isDirty() && i.second.isEmpty())
+            i.second.kill();
 
-	if (bi == m_currentBlock)
-	{
-		// We mined the last block.
-		// Our state is good - we just need to move on to next.
-		m_previousBlock = m_currentBlock;
-		resetCurrent();
-		m_currentNumber++;
-		ret = true;
-	}
-	else if (bi == m_previousBlock)
-	{
-		// No change since last sync.
-		// Carry on as we were.
-	}
-	else
-	{
-		// New blocks available, or we've switched to a different branch. All change.
-		// Find most recent state dump and replay what's left.
-		// (Most recent state dump might end up being genesis.)
-
-		std::vector<h256> chain;
-		while (bi.stateRoot != BlockInfo::genesis().hash && m_db.lookup(bi.stateRoot).empty())	// while we don't have the state root of the latest block...
-		{
-			chain.push_back(bi.hash);				// push back for later replay.
-			bi.populate(_bc.block(bi.parentHash));	// move to parent.
-		}
-
-		m_previousBlock = bi;
-		resetCurrent();
-
-		// Iterate through in reverse, playing back each of the blocks.
-		for (auto it = chain.rbegin(); it != chain.rend(); ++it)
-			playback(_bc.block(*it), true);
-
-		m_currentNumber = _bc.details(_block).number + 1;
-		resetCurrent();
-		ret = true;
-	}
-	return ret;
+    for (auto const& _address : m_unrevertablyTouched)
+    {
+        Account* a = account(_address);
+        if (a && a->isEmpty())
+            a->kill();
+    }
 }
 
-map<Address, u256> State::addresses() const
+State& State::operator=(State const& _s)
 {
-	map<Address, u256> ret;
-	for (auto i: m_cache)
-		if (i.second.type() != AddressType::Dead)
-			ret[i.first] = i.second.balance();
-	for (auto const& i: m_state)
-		if (m_cache.find(i.first) == m_cache.end())
-			ret[i.first] = RLP(i.second)[0].toInt<u256>();
-	return ret;
+    if (&_s == this)
+        return *this;
+
+    m_db = _s.m_db;
+    m_state.open(&m_db, _s.m_state.root(), Verification::Skip);
+    m_cache = _s.m_cache;
+    m_unchangedCacheEntries = _s.m_unchangedCacheEntries;
+    m_nonExistingAccountsCache = _s.m_nonExistingAccountsCache;
+    m_touched = _s.m_touched;
+    m_unrevertablyTouched = _s.m_unrevertablyTouched;
+    m_accountStartNonce = _s.m_accountStartNonce;
+    return *this;
 }
 
-void State::resetCurrent()
+Account const* State::account(Address const& _a) const
 {
-	m_transactions.clear();
-	m_cache.clear();
-	m_currentBlock = BlockInfo();
-	m_currentBlock.coinbaseAddress = m_ourAddress;
-	m_currentBlock.stateRoot = m_previousBlock.stateRoot;
-	m_currentBlock.parentHash = m_previousBlock.hash;
-	m_state.setRoot(m_currentBlock.stateRoot);
+    return const_cast<State*>(this)->account(_a);
 }
 
-bool State::sync(TransactionQueue& _tq)
+Account* State::account(Address const& _addr)
 {
-	// TRANSACTIONS
-	bool ret = false;
-	auto ts = _tq.transactions();
-	for (auto const& i: ts)
-		if (!m_transactions.count(i.first))
-			// don't have it yet! Execute it now.
-			try
-			{
-				execute(i.second);
-				ret = true;
-			}
-			catch (InvalidNonce const& in)
-			{
-				if (in.required > in.candidate)
-				{
-					// too old
-					_tq.drop(i.first);
-					ret = true;
-				}
-			}
-			catch (std::exception const&)
-			{
-				// Something else went wrong - drop it.
-				_tq.drop(i.first);
-				ret = true;
-			}
-	return ret;
+    auto it = m_cache.find(_addr);
+    if (it != m_cache.end())
+        return &it->second;
+
+    if (m_nonExistingAccountsCache.count(_addr))
+        return nullptr;
+
+    // Populate basic info.
+    string stateBack = m_state.at(_addr);
+    if (stateBack.empty())
+    {
+        m_nonExistingAccountsCache.insert(_addr);
+        return nullptr;
+    }
+
+    clearCacheIfTooLarge();
+
+    RLP state(stateBack);
+    auto const nonce = state[0].toInt<u256>();
+    auto const balance = state[1].toInt<u256>();
+    auto const storageRoot = state[2].toHash<h256>();
+    auto const codeHash = state[3].toHash<h256>();
+    // version is 0 if absent from RLP
+    auto const version = state[4] ? state[4].toInt<u256>() : 0;
+
+    auto i = m_cache.emplace(piecewise_construct, forward_as_tuple(_addr),
+        forward_as_tuple(nonce, balance, storageRoot, codeHash, version, Account::Unchanged));
+    m_unchangedCacheEntries.push_back(_addr);
+    return &i.first->second;
 }
 
-u256 State::playback(bytesConstRef _block, bool _fullCommit)
+void State::clearCacheIfTooLarge() const
 {
-	try
-	{
-		m_currentBlock.populate(_block);
-		m_currentBlock.verifyInternals(_block);
-		return playback(_block, BlockInfo(), _fullCommit);
-	}
-	catch (...)
-	{
-		// TODO: Slightly nicer handling? :-)
-		cerr << "ERROR: Corrupt block-chain! Delete your block-chain DB and restart." << endl;
-		exit(1);
-	}
+    // TODO: Find a good magic number
+    while (m_unchangedCacheEntries.size() > 1000)
+    {
+        // Remove a random element
+        // FIXME: Do not use random device as the engine. The random device should be only used to seed other engine.
+        size_t const randomIndex = std::uniform_int_distribution<size_t>(0, m_unchangedCacheEntries.size() - 1)(dev::s_fixedHashEngine);
+
+        Address const addr = m_unchangedCacheEntries[randomIndex];
+        swap(m_unchangedCacheEntries[randomIndex], m_unchangedCacheEntries.back());
+        m_unchangedCacheEntries.pop_back();
+
+        auto cacheEntry = m_cache.find(addr);
+        if (cacheEntry != m_cache.end() && !cacheEntry->second.isDirty())
+            m_cache.erase(cacheEntry);
+    }
 }
 
-u256 State::playback(bytesConstRef _block, BlockInfo const& _bi, BlockInfo const& _parent, BlockInfo const& _grandParent, bool _fullCommit)
+void State::commit(CommitBehaviour _commitBehaviour)
 {
-	m_currentBlock = _bi;
-	m_previousBlock = _parent;
-	return playback(_block, _grandParent, _fullCommit);
+    if (_commitBehaviour == CommitBehaviour::RemoveEmptyAccounts)
+        removeEmptyAccounts();
+    m_touched += dev::eth::commit(m_cache, m_state);
+    m_changeLog.clear();
+    m_cache.clear();
+    m_unchangedCacheEntries.clear();
 }
 
-u256 State::playback(bytesConstRef _block, BlockInfo const& _grandParent, bool _fullCommit)
+unordered_map<Address, u256> State::addresses() const
 {
-	if (m_currentBlock.parentHash != m_previousBlock.hash)
-		throw InvalidParentHash();
-
-	// All ok with the block generally. Play back the transactions now...
-	for (auto const& i: RLP(_block)[1])
-		execute(i.data());
-
-	// Initialise total difficulty calculation.
-	u256 tdIncrease = m_currentBlock.difficulty;
-
-	// Check uncles & apply their rewards to state.
-	Addresses rewarded;
-	for (auto const& i: RLP(_block)[2])
-	{
-		BlockInfo uncle(i.data());
-		if (m_previousBlock.parentHash != uncle.parentHash)
-			throw InvalidUncle();
-		if (_grandParent)
-			uncle.verifyParent(_grandParent);
-		tdIncrease += uncle.difficulty;
-		rewarded.push_back(uncle.coinbaseAddress);
-	}
-	applyRewards(rewarded);
-
-	// Commit all cached state changes to the state trie.
-	commit();
-
-	// Hash the state trie and check against the state_root hash in m_currentBlock.
-	if (m_currentBlock.stateRoot != rootHash())
-	{
-		cout << "*** BAD STATE ROOT!" << endl;
-		cout << m_state << endl << TrieDB<Address, Overlay>(&m_db, m_currentBlock.stateRoot);
-		// Rollback the trie.
-		m_db.rollback();
-		throw InvalidStateRoot();
-	}
-
-	if (_fullCommit)
-	{
-		// Commit the new trie to disk.
-		m_db.commit();
-
-		m_previousBlock = m_currentBlock;
-		resetCurrent();
-	}
-	else
-	{
-		m_db.rollback();
-		resetCurrent();
-	}
-
-	return tdIncrease;
+#if ETH_FATDB
+    unordered_map<Address, u256> ret;
+    for (auto& i: m_cache)
+        if (i.second.isAlive())
+            ret[i.first] = i.second.balance();
+    for (auto const& i: m_state)
+        if (m_cache.find(i.first) == m_cache.end())
+            ret[i.first] = RLP(i.second)[1].toInt<u256>();
+    return ret;
+#else
+    BOOST_THROW_EXCEPTION(InterfaceNotSupported() << errinfo_interface("State::addresses()"));
+#endif
 }
 
-// @returns the block that represents the difference between m_previousBlock and m_currentBlock.
-// (i.e. all the transactions we executed).
-void State::commitToMine(BlockChain const& _bc)
+std::pair<State::AddressMap, h256> State::addresses(
+    h256 const& _beginHash, size_t _maxResults) const
 {
-	if (m_currentBlock.sha3Transactions != h256() || m_currentBlock.sha3Uncles != h256())
-		return;
+    AddressMap addresses;
+    h256 nextKey;
 
-	RLPStream uncles;
-	Addresses uncleAddresses;
+#if ETH_FATDB
+    for (auto it = m_state.hashedLowerBound(_beginHash); it != m_state.hashedEnd(); ++it)
+    {
+        auto const address = Address(it.key());
+        auto const itCachedAddress = m_cache.find(address);
 
-	if (m_previousBlock != BlockInfo::genesis())
-	{
-		// Find uncles if we're not a direct child of the genesis.
-//		cout << "Checking " << m_previousBlock.hash << ", parent=" << m_previousBlock.parentHash << endl;
-		auto us = _bc.details(m_previousBlock.parentHash).children;
-		assert(us.size() >= 1);	// must be at least 1 child of our grandparent - it's our own parent!
-		uncles.appendList(us.size() - 1);	// one fewer - uncles precludes our parent from the list of grandparent's children.
-		for (auto const& u: us)
-			if (u != m_previousBlock.hash)	// ignore our own parent - it's not an uncle.
-			{
-				BlockInfo ubi(_bc.block(u));
-				ubi.fillStream(uncles, true);
-				uncleAddresses.push_back(ubi.coinbaseAddress);
-			}
-	}
-	else
-		uncles.appendList(0);
+        // skip if deleted in cache
+        if (itCachedAddress != m_cache.end() && itCachedAddress->second.isDirty() &&
+            !itCachedAddress->second.isAlive())
+            continue;
 
-	applyRewards(uncleAddresses);
+        // break when _maxResults fetched
+        if (addresses.size() == _maxResults)
+        {
+            nextKey = h256((*it).first);
+            break;
+        }
 
-	RLPStream txs(m_transactions.size());
-	for (auto const& i: m_transactions)
-		i.second.fillStream(txs);
+        h256 const hashedAddress((*it).first);
+        addresses[hashedAddress] = address;
+    }
+#endif
 
-	txs.swapOut(m_currentTxs);
-	uncles.swapOut(m_currentUncles);
+    // get addresses from cache with hash >= _beginHash (both new and old touched, we can't
+    // distinguish them) and order by hash
+    AddressMap cacheAddresses;
+    for (auto const& addressAndAccount : m_cache)
+    {
+        auto const& address = addressAndAccount.first;
+        auto const addressHash = sha3(address);
+        auto const& account = addressAndAccount.second;
+        if (account.isDirty() && account.isAlive() && addressHash >= _beginHash)
+            cacheAddresses.emplace(addressHash, address);
+    }
 
-	m_currentBlock.sha3Transactions = sha3(m_currentTxs);
-	m_currentBlock.sha3Uncles = sha3(m_currentUncles);
+    // merge addresses from DB and addresses from cache
+    addresses.insert(cacheAddresses.begin(), cacheAddresses.end());
 
-	// Commit any and all changes to the trie that are in the cache, then update the state root accordingly.
-	commit();
-	m_currentBlock.stateRoot = m_state.root();
-	m_currentBlock.parentHash = m_previousBlock.hash;
+    // if some new accounts were created in cache we need to return fewer results
+    if (addresses.size() > _maxResults)
+    {
+        auto itEnd = std::next(addresses.begin(), _maxResults);
+        nextKey = itEnd->first;
+        addresses.erase(itEnd, addresses.end());
+    }
+
+    return {addresses, nextKey};
 }
 
-MineInfo State::mine(uint _msTimeout)
+
+void State::setRoot(h256 const& _r)
 {
-	// Update timestamp according to clock.
-	m_currentBlock.timestamp = time(0);
-
-	// Update difficulty according to timestamp.
-	m_currentBlock.difficulty = m_currentBlock.calculateDifficulty(m_previousBlock);
-
-	// TODO: Miner class that keeps dagger between mine calls (or just non-polling mining).
-	MineInfo ret = m_dagger.mine(/*out*/m_currentBlock.nonce, m_currentBlock.headerHashWithoutNonce(), m_currentBlock.difficulty, _msTimeout);
-	if (ret.completed)
-	{
-		// Got it!
-
-		// Commit to disk.
-		m_db.commit();
-
-		// Compile block:
-		RLPStream ret;
-		ret.appendList(3);
-		m_currentBlock.fillStream(ret, true);
-		ret.appendRaw(m_currentTxs);
-		ret.appendRaw(m_currentUncles);
-		ret.swapOut(m_currentBytes);
-		m_currentBlock.hash = sha3(m_currentBytes);
-		cout << "*** SUCCESS: Mined " << m_currentBlock.hash << " (parent: " << m_currentBlock.parentHash << ")" << endl;
-	}
-	else
-		m_currentBytes.clear();
-
-	return ret;
+    m_cache.clear();
+    m_unchangedCacheEntries.clear();
+    m_nonExistingAccountsCache.clear();
+//  m_touched.clear();
+    m_state.setRoot(_r);
 }
 
-bool State::isNormalAddress(Address _id) const
+bool State::addressInUse(Address const& _id) const
 {
-	ensureCached(_id, false, false);
-	auto it = m_cache.find(_id);
-	if (it == m_cache.end())
-		return false;
-	return it->second.type() == AddressType::Normal;
+    return !!account(_id);
 }
 
-bool State::isContractAddress(Address _id) const
+bool State::accountNonemptyAndExisting(Address const& _address) const
 {
-	ensureCached(_id, false, false);
-	auto it = m_cache.find(_id);
-	if (it == m_cache.end())
-		return false;
-	return it->second.type() == AddressType::Contract;
+    if (Account const* a = account(_address))
+        return !a->isEmpty();
+    else
+        return false;
 }
 
-u256 State::balance(Address _id) const
+bool State::addressHasCode(Address const& _id) const
 {
-	ensureCached(_id, false, false);
-	auto it = m_cache.find(_id);
-	if (it == m_cache.end())
-		return 0;
-	return it->second.balance();
+    if (auto a = account(_id))
+        return a->codeHash() != EmptySHA3;
+    else
+        return false;
 }
 
-void State::noteSending(Address _id)
+u256 State::balance(Address const& _id) const
 {
-	ensureCached(_id, false, false);
-	auto it = m_cache.find(_id);
-	if (it == m_cache.end())
-		m_cache[_id] = AddressState(0, 1);
-	else
-		it->second.incNonce();
+    if (auto a = account(_id))
+        return a->balance();
+    else
+        return 0;
 }
 
-void State::addBalance(Address _id, u256 _amount)
+void State::incNonce(Address const& _addr)
 {
-	ensureCached(_id, false, false);
-	auto it = m_cache.find(_id);
-	if (it == m_cache.end())
-		m_cache[_id] = AddressState(_amount, 0);
-	else
-		it->second.addBalance(_amount);
+    if (Account* a = account(_addr))
+    {
+        auto oldNonce = a->nonce();
+        a->incNonce();
+        m_changeLog.emplace_back(_addr, oldNonce);
+    }
+    else
+        // This is possible if a transaction has gas price 0.
+        createAccount(_addr, Account(requireAccountStartNonce() + 1, 0));
 }
 
-void State::subBalance(Address _id, bigint _amount)
+void State::setNonce(Address const& _addr, u256 const& _newNonce)
 {
-	ensureCached(_id, false, false);
-	auto it = m_cache.find(_id);
-	if (it == m_cache.end() || (bigint)it->second.balance() < _amount)
-		throw NotEnoughCash();
-	else
-		it->second.addBalance(-_amount);
+    if (Account* a = account(_addr))
+    {
+        auto oldNonce = a->nonce();
+        a->setNonce(_newNonce);
+        m_changeLog.emplace_back(_addr, oldNonce);
+    }
+    else
+        // This is possible when a contract is being created.
+        createAccount(_addr, Account(_newNonce, 0));
 }
 
-u256 State::transactionsFrom(Address _id) const
+void State::addBalance(Address const& _id, u256 const& _amount)
 {
-	ensureCached(_id, false, false);
-	auto it = m_cache.find(_id);
-	if (it == m_cache.end())
-		return 0;
-	else
-		return it->second.nonce();
+    if (Account* a = account(_id))
+    {
+        // Log empty account being touched. Empty touched accounts are cleared
+        // after the transaction, so this event must be also reverted.
+        // We only log the first touch (not dirty yet), and only for empty
+        // accounts, as other accounts does not matter.
+        // TODO: to save space we can combine this event with Balance by having
+        //       Balance and Balance+Touch events.
+        if (!a->isDirty() && a->isEmpty())
+            m_changeLog.emplace_back(Change::Touch, _id);
+
+        // Increase the account balance. This also is done for value 0 to mark
+        // the account as dirty. Dirty account are not removed from the cache
+        // and are cleared if empty at the end of the transaction.
+        a->addBalance(_amount);
+    }
+    else
+        createAccount(_id, {requireAccountStartNonce(), _amount});
+
+    if (_amount)
+        m_changeLog.emplace_back(Change::Balance, _id, _amount);
 }
 
-u256 State::contractMemory(Address _id, u256 _memory) const
+void State::subBalance(Address const& _addr, u256 const& _value)
 {
-	ensureCached(_id, false, false);
-	auto it = m_cache.find(_id);
-	if (it == m_cache.end() || it->second.type() != AddressType::Contract)
-		return 0;
-	else if (it->second.haveMemory())
-	{
-		auto mit = it->second.memory().find(_memory);
-		if (mit == it->second.memory().end())
-			return 0;
-		return mit->second;
-	}
-	// Memory not cached - just grab one item from the DB rather than cache the lot.
-	TrieDB<u256, Overlay> memdb(const_cast<Overlay*>(&m_db), it->second.oldRoot());			// promise we won't change the overlay! :)
-	return RLP(memdb.at(_memory)).toInt<u256>();	// TODO: CHECK: check if this is actually an RLP decode
+    if (_value == 0)
+        return;
+
+    Account* a = account(_addr);
+    if (!a || a->balance() < _value)
+        // TODO: I expect this never happens.
+        BOOST_THROW_EXCEPTION(NotEnoughCash());
+
+    // Fall back to addBalance().
+    addBalance(_addr, 0 - _value);
 }
 
-void State::execute(bytesConstRef _rlp)
+void State::setBalance(Address const& _addr, u256 const& _value)
 {
-	// Entry point for a user-executed transaction.
-	Transaction t(_rlp);
-	executeBare(t, t.sender());
+    Account* a = account(_addr);
+    u256 original = a ? a->balance() : 0;
 
-	// Add to the user-originated transactions that we've executed.
-	// NOTE: Here, contract-originated transactions will not get added to the transaction list.
-	// If this is wrong, move this line into execute(Transaction const& _t, Address _sender) and
-	// don't forget to allow unsigned transactions in the tx list if they concur with the script execution.
-	m_transactions.insert(make_pair(t.sha3(), t));
+    // Fall back to addBalance().
+    addBalance(_addr, _value - original);
 }
 
-void State::applyRewards(Addresses const& _uncleAddresses)
+void State::createContract(Address const& _address)
 {
-	u256 r = c_blockReward;
-	for (auto const& i: _uncleAddresses)
-	{
-		addBalance(i, c_blockReward * 4 / 3);
-		r += c_blockReward / 8;
-	}
-	addBalance(m_currentBlock.coinbaseAddress, r);
+    createAccount(_address, {requireAccountStartNonce(), 0});
 }
 
-void State::executeBare(Transaction const& _t, Address _sender)
+void State::createAccount(Address const& _address, Account const&& _account)
 {
-	// Entry point for a contract-originated transaction.
-
-	// Ignore invalid transactions.
-	auto nonceReq = transactionsFrom(_sender);
-	if (_t.nonce != nonceReq)
-		throw InvalidNonce(nonceReq, _t.nonce);
-
-	// Not considered invalid - just pointless.
-	if (balance(_sender) < _t.value + _t.fee)
-		throw NotEnoughCash();
-
-	// TODO: check fee is sufficient?
-
-	// Increment associated nonce for sender.
-	noteSending(_sender);
-
-	if (_t.receiveAddress)
-	{
-		subBalance(_sender, _t.value + _t.fee);
-		addBalance(_t.receiveAddress, _t.value);
-		addBalance(m_currentBlock.coinbaseAddress, _t.fee);
-
-		if (isContractAddress(_t.receiveAddress))
-		{
-			MinerFeeAdder feeAdder({this, 0});	// will add fee on destruction.
-			execute(_t.receiveAddress, _sender, _t.value, _t.fee, _t.data, &feeAdder.fee);
-		}
-	}
-	else
-	{
-		// Try to make a new contract
-		if (_t.fee < _t.data.size() * c_memoryFee + c_newContractFee)
-			throw FeeTooSmall();
-
-		Address newAddress = low160(_t.sha3());
-
-		if (isContractAddress(newAddress) || isNormalAddress(newAddress))
-			throw ContractAddressCollision();
-
-		// All OK - set it up.
-		m_cache[newAddress] = AddressState(0, 0, sha3(RLPNull));
-		auto& mem = m_cache[newAddress].takeMemory();
-		for (uint i = 0; i < _t.data.size(); ++i)
-			mem[i] = _t.data[i];
-		subBalance(_sender, _t.value + _t.fee);
-		addBalance(newAddress, _t.value);
-		addBalance(m_currentBlock.coinbaseAddress, _t.fee);
-	}
+    assert(!addressInUse(_address) && "Account already exists");
+    m_cache[_address] = std::move(_account);
+    m_nonExistingAccountsCache.erase(_address);
+    m_changeLog.emplace_back(Change::Create, _address);
 }
 
-// Convert from a 256-bit integer stack/memory entry into a 160-bit Address hash.
-// Currently we just pull out the left (high-order in BE) 160-bits.
-// TODO: CHECK: check that this is correct.
-inline Address asAddress(u256 _item)
+void State::kill(Address _addr)
 {
-	return left160(h256(_item));
+    if (auto a = account(_addr))
+        a->kill();
+    // If the account is not in the db, nothing to kill.
 }
 
-void State::execute(Address _myAddress, Address _txSender, u256 _txValue, u256 _txFee, u256s const& _txData, u256* _totalFee)
+u256 State::getNonce(Address const& _addr) const
 {
-	std::vector<u256> stack;
-
-	// Set up some local functions.
-	auto require = [&](u256 _n)
-	{
-		if (stack.size() < _n)
-			throw StackTooSmall(_n, stack.size());
-	};
-	ensureCached(_myAddress, true, true);
-	auto& myMemory = m_cache[_myAddress].takeMemory();
-
-	auto mem = [&](u256 _n) -> u256
-	{
-		auto i = myMemory.find(_n);
-		return i == myMemory.end() ? 0 : i->second;
-	};
-	auto setMem = [&](u256 _n, u256 _v)
-	{
-		if (_v)
-			myMemory[_n] = _v;
-		else
-			myMemory.erase(_n);
-	};
-
-	u256 curPC = 0;
-	u256 nextPC = 1;
-	u256 stepCount = 0;
-	for (bool stopped = false; !stopped; curPC = nextPC, nextPC = curPC + 1)
-	{
-		stepCount++;
-
-		bigint minerFee = stepCount > 16 ? c_stepFee : 0;
-		bigint voidFee = 0;
-
-		auto rawInst = mem(curPC);
-		if (rawInst > 0xff)
-			throw BadInstruction();
-		Instruction inst = (Instruction)(uint8_t)rawInst;
-
-		switch (inst)
-		{
-		case Instruction::STORE:
-			require(2);
-			if (!mem(stack.back()) && stack[stack.size() - 2])
-				voidFee += c_memoryFee;
-			if (mem(stack.back()) && !stack[stack.size() - 2])
-				voidFee -= c_memoryFee;
-			// continue on to...
-		case Instruction::LOAD:
-			minerFee += c_dataFee;
-			break;
-
-		case Instruction::EXTRO:
-		case Instruction::BALANCE:
-			minerFee += c_extroFee;
-			break;
-
-		case Instruction::MKTX:
-			minerFee += c_txFee;
-			break;
-
-		case Instruction::SHA256:
-		case Instruction::RIPEMD160:
-		case Instruction::ECMUL:
-		case Instruction::ECADD:
-		case Instruction::ECSIGN:
-		case Instruction::ECRECOVER:
-		case Instruction::ECVALID:
-			minerFee += c_cryptoFee;
-			break;
-		default:
-			break;
-		}
-
-		if (minerFee + voidFee > balance(_myAddress))
-			throw NotEnoughCash();
-		subBalance(_myAddress, minerFee + voidFee);
-		*_totalFee += (u256)minerFee;
-
-		switch (inst)
-		{
-		case Instruction::ADD:
-			//pops two items and pushes S[-1] + S[-2] mod 2^256.
-			require(2);
-			stack[stack.size() - 2] += stack.back();
-			stack.pop_back();
-			break;
-		case Instruction::MUL:
-			//pops two items and pushes S[-1] * S[-2] mod 2^256.
-			require(2);
-			stack[stack.size() - 2] *= stack.back();
-			stack.pop_back();
-			break;
-		case Instruction::SUB:
-			require(2);
-			stack[stack.size() - 2] = stack.back() - stack[stack.size() - 2];
-			stack.pop_back();
-			break;
-		case Instruction::DIV:
-			require(2);
-			stack[stack.size() - 2] = stack.back() / stack[stack.size() - 2];
-			stack.pop_back();
-			break;
-		case Instruction::SDIV:
-			require(2);
-			(s256&)stack[stack.size() - 2] = (s256&)stack.back() / (s256&)stack[stack.size() - 2];
-			stack.pop_back();
-			break;
-		case Instruction::MOD:
-			require(2);
-			stack[stack.size() - 2] = stack.back() % stack[stack.size() - 2];
-			stack.pop_back();
-			break;
-		case Instruction::SMOD:
-			require(2);
-			(s256&)stack[stack.size() - 2] = (s256&)stack.back() % (s256&)stack[stack.size() - 2];
-			stack.pop_back();
-			break;
-		case Instruction::EXP:
-		{
-			// TODO: better implementation?
-			require(2);
-			auto n = stack.back();
-			auto x = stack[stack.size() - 2];
-			stack.pop_back();
-			for (u256 i = 0; i < x; ++i)
-				n *= n;
-			stack.back() = n;
-			break;
-		}
-		case Instruction::NEG:
-			require(1);
-			stack.back() = ~(stack.back() - 1);
-			break;
-		case Instruction::LT:
-			require(2);
-			stack[stack.size() - 2] = stack.back() < stack[stack.size() - 2] ? 1 : 0;
-			stack.pop_back();
-			break;
-		case Instruction::LE:
-			require(2);
-			stack[stack.size() - 2] = stack.back() <= stack[stack.size() - 2] ? 1 : 0;
-			stack.pop_back();
-			break;
-		case Instruction::GT:
-			require(2);
-			stack[stack.size() - 2] = stack.back() > stack[stack.size() - 2] ? 1 : 0;
-			stack.pop_back();
-			break;
-		case Instruction::GE:
-			require(2);
-			stack[stack.size() - 2] = stack.back() >= stack[stack.size() - 2] ? 1 : 0;
-			stack.pop_back();
-			break;
-		case Instruction::EQ:
-			require(2);
-			stack[stack.size() - 2] = stack.back() == stack[stack.size() - 2] ? 1 : 0;
-			stack.pop_back();
-			break;
-		case Instruction::NOT:
-			require(1);
-			stack.back() = stack.back() ? 0 : 1;
-			stack.pop_back();
-			break;
-		case Instruction::MYADDRESS:
-			stack.push_back((u160)_myAddress);
-			break;
-		case Instruction::TXSENDER:
-			stack.push_back((u160)_txSender);
-			break;
-		case Instruction::TXVALUE:
-			stack.push_back(_txValue);
-			break;
-		case Instruction::TXFEE:
-			stack.push_back(_txFee);
-			break;
-		case Instruction::TXDATAN:
-			stack.push_back(_txData.size());
-			break;
-		case Instruction::TXDATA:
-			require(1);
-			stack.back() = stack.back() < _txData.size() ? _txData[(uint)stack.back()] : 0;
-			break;
-		case Instruction::BLK_PREVHASH:
-			stack.push_back(m_previousBlock.hash);
-			break;
-		case Instruction::BLK_COINBASE:
-			stack.push_back((u160)m_currentBlock.coinbaseAddress);
-			break;
-		case Instruction::BLK_TIMESTAMP:
-			stack.push_back(m_currentBlock.timestamp);
-			break;
-		case Instruction::BLK_NUMBER:
-			stack.push_back(m_currentNumber);
-			break;
-		case Instruction::BLK_DIFFICULTY:
-			stack.push_back(m_currentBlock.difficulty);
-			break;
-		case Instruction::SHA256:
-		{
-			uint s = (uint)min(stack.back(), (u256)(stack.size() - 1) * 32);
-			stack.pop_back();
-
-			CryptoPP::SHA256 digest;
-			uint i = 0;
-			for (; s; s = (s >= 32 ? s - 32 : 0), i += 32)
-			{
-				bytes b = toBigEndian(stack.back());
-				digest.Update(b.data(), (int)min<u256>(32, s));			// b.size() == 32
-				stack.pop_back();
-			}
-			array<byte, 32> final;
-			digest.TruncatedFinal(final.data(), 32);
-			stack.push_back(fromBigEndian<u256>(final));
-			break;
-		}
-		case Instruction::RIPEMD160:
-		{
-			uint s = (uint)min(stack.back(), (u256)(stack.size() - 1) * 32);
-			stack.pop_back();
-
-			CryptoPP::RIPEMD160 digest;
-			uint i = 0;
-			for (; s; s = (s >= 32 ? s - 32 : 0), i += 32)
-			{
-				bytes b = toBigEndian(stack.back());
-				digest.Update(b.data(), (int)min<u256>(32, s));			// b.size() == 32
-				stack.pop_back();
-			}
-			array<byte, 20> final;
-			digest.TruncatedFinal(final.data(), 20);
-			// NOTE: this aligns to right of 256-bit container (low-order bytes).
-			// This won't work if they're treated as byte-arrays and thus left-aligned in a 256-bit container.
-			stack.push_back((u256)fromBigEndian<u160>(final));
-			break;
-		}
-		case Instruction::ECMUL:
-		{
-			// ECMUL - pops three items.
-			// If (S[-2],S[-1]) are a valid point in secp256k1, including both coordinates being less than P, pushes (S[-1],S[-2]) * S[-3], using (0,0) as the point at infinity.
-			// Otherwise, pushes (0,0).
-			require(3);
-
-			bytes pub(1, 4);
-			pub += toBigEndian(stack[stack.size() - 2]);
-			pub += toBigEndian(stack.back());
-			stack.pop_back();
-			stack.pop_back();
-
-			bytes x = toBigEndian(stack.back());
-			stack.pop_back();
-
-			if (secp256k1_ecdsa_pubkey_verify(pub.data(), (int)pub.size()))	// TODO: Check both are less than P.
-			{
-				secp256k1_ecdsa_pubkey_tweak_mul(pub.data(), (int)pub.size(), x.data());
-				stack.push_back(fromBigEndian<u256>(bytesConstRef(&pub).cropped(1, 32)));
-				stack.push_back(fromBigEndian<u256>(bytesConstRef(&pub).cropped(33, 32)));
-			}
-			else
-			{
-				stack.push_back(0);
-				stack.push_back(0);
-			}
-			break;
-		}
-		case Instruction::ECADD:
-		{
-			// ECADD - pops four items and pushes (S[-4],S[-3]) + (S[-2],S[-1]) if both points are valid, otherwise (0,0).
-			require(4);
-
-			bytes pub(1, 4);
-			pub += toBigEndian(stack[stack.size() - 2]);
-			pub += toBigEndian(stack.back());
-			stack.pop_back();
-			stack.pop_back();
-
-			bytes tweak(1, 4);
-			tweak += toBigEndian(stack[stack.size() - 2]);
-			tweak += toBigEndian(stack.back());
-			stack.pop_back();
-			stack.pop_back();
-
-			if (secp256k1_ecdsa_pubkey_verify(pub.data(),(int) pub.size()) && secp256k1_ecdsa_pubkey_verify(tweak.data(),(int) tweak.size()))
-			{
-				secp256k1_ecdsa_pubkey_tweak_add(pub.data(), (int)pub.size(), tweak.data());
-				stack.push_back(fromBigEndian<u256>(bytesConstRef(&pub).cropped(1, 32)));
-				stack.push_back(fromBigEndian<u256>(bytesConstRef(&pub).cropped(33, 32)));
-			}
-			else
-			{
-				stack.push_back(0);
-				stack.push_back(0);
-			}
-			break;
-		}
-		case Instruction::ECSIGN:
-		{
-			require(2);
-			bytes sig(64);
-			int v = 0;
-
-			u256 msg = stack.back();
-			stack.pop_back();
-			u256 priv = stack.back();
-			stack.pop_back();
-			bytes nonce = toBigEndian(Transaction::kFromMessage(msg, priv));
-
-			if (!secp256k1_ecdsa_sign_compact(toBigEndian(msg).data(), 64, sig.data(), toBigEndian(priv).data(), nonce.data(), &v))
-				throw InvalidSignature();
-
-			stack.push_back(v + 27);
-			stack.push_back(fromBigEndian<u256>(bytesConstRef(&sig).cropped(0, 32)));
-			stack.push_back(fromBigEndian<u256>(bytesConstRef(&sig).cropped(32)));
-			break;
-		}
-		case Instruction::ECRECOVER:
-		{
-			require(4);
-
-			bytes sig = toBigEndian(stack[stack.size() - 2]) + toBigEndian(stack.back());
-			stack.pop_back();
-			stack.pop_back();
-			int v = (int)stack.back();
-			stack.pop_back();
-			bytes msg = toBigEndian(stack.back());
-			stack.pop_back();
-
-			byte pubkey[65];
-			int pubkeylen = 65;
-			if (secp256k1_ecdsa_recover_compact(msg.data(), (int)msg.size(), sig.data(), pubkey, &pubkeylen, 0, v - 27))
-			{
-				stack.push_back(0);
-				stack.push_back(0);
-			}
-			else
-			{
-				stack.push_back(fromBigEndian<u256>(bytesConstRef(&pubkey[1], 32)));
-				stack.push_back(fromBigEndian<u256>(bytesConstRef(&pubkey[33], 32)));
-			}
-			break;
-		}
-		case Instruction::ECVALID:
-		{
-			require(2);
-			bytes pub(1, 4);
-			pub += toBigEndian(stack[stack.size() - 2]);
-			pub += toBigEndian(stack.back());
-			stack.pop_back();
-			stack.pop_back();
-
-			stack.back() = secp256k1_ecdsa_pubkey_verify(pub.data(), (int)pub.size()) ? 1 : 0;
-			break;
-		}
-		case Instruction::SHA3:
-		{
-			uint s = (uint)min(stack.back(), (u256)(stack.size() - 1) * 32);
-			stack.pop_back();
-
-			CryptoPP::SHA3_256 digest;
-			uint i = 0;
-			for (; s; s = (s >= 32 ? s - 32 : 0), i += 32)
-			{
-				bytes b = toBigEndian(stack.back());
-				digest.Update(b.data(), (int)min<u256>(32, s));			// b.size() == 32
-				stack.pop_back();
-			}
-			array<byte, 32> final;
-			digest.TruncatedFinal(final.data(), 32);
-			stack.push_back(fromBigEndian<u256>(final));
-			break;
-		}
-		case Instruction::PUSH:
-		{
-			stack.push_back(mem(curPC + 1));
-			nextPC = curPC + 2;
-			break;
-		}
-		case Instruction::POP:
-			require(1);
-			stack.pop_back();
-			break;
-		case Instruction::DUP:
-			require(1);
-			stack.push_back(stack.back());
-			break;
-		case Instruction::DUPN:
-		{
-			auto s = mem(curPC + 1);
-			if (s == 0 || s > stack.size())
-				throw OperandOutOfRange(1, stack.size(), s);
-			stack.push_back(stack[stack.size() - (uint)s]);
-			nextPC = curPC + 2;
-			break;
-		}
-		case Instruction::SWAP:
-		{
-			require(2);
-			auto d = stack.back();
-			stack.back() = stack[stack.size() - 2];
-			stack[stack.size() - 2] = d;
-			break;
-		}
-		case Instruction::SWAPN:
-		{
-			require(1);
-			auto d = stack.back();
-			auto s = mem(curPC + 1);
-			if (s == 0 || s > stack.size())
-				throw OperandOutOfRange(1, stack.size(), s);
-			stack.back() = stack[stack.size() - (uint)s];
-			stack[stack.size() - (uint)s] = d;
-			nextPC = curPC + 2;
-			break;
-		}
-		case Instruction::LOAD:
-			require(1);
-			stack.back() = mem(stack.back());
-			break;
-		case Instruction::STORE:
-			require(2);
-			setMem(stack.back(), stack[stack.size() - 2]);
-			stack.pop_back();
-			stack.pop_back();
-			break;
-		case Instruction::JMP:
-			require(1);
-			nextPC = stack.back();
-			stack.pop_back();
-			break;
-		case Instruction::JMPI:
-			require(2);
-			if (stack.back())
-				nextPC = stack[stack.size() - 2];
-			stack.pop_back();
-			stack.pop_back();
-			break;
-		case Instruction::IND:
-			stack.push_back(curPC);
-			break;
-		case Instruction::EXTRO:
-		{
-			require(2);
-			auto memoryAddress = stack.back();
-			stack.pop_back();
-			Address contractAddress = asAddress(stack.back());
-			stack.back() = contractMemory(contractAddress, memoryAddress);
-			break;
-		}
-		case Instruction::BALANCE:
-		{
-			require(1);
-			stack.back() = balance(asAddress(stack.back()));
-			break;
-		}
-		case Instruction::MKTX:
-		{
-			require(4);
-
-			Transaction t;
-			t.receiveAddress = asAddress(stack.back());
-			stack.pop_back();
-			t.value = stack.back();
-			stack.pop_back();
-			t.fee = stack.back();
-			stack.pop_back();
-
-			auto itemCount = stack.back();
-			stack.pop_back();
-			if (stack.size() < itemCount)
-				throw OperandOutOfRange(0, stack.size(), itemCount);
-			t.data.reserve((uint)itemCount);
-			for (auto i = 0; i < itemCount; ++i)
-			{
-				t.data.push_back(stack.back());
-				stack.pop_back();
-			}
-
-			t.nonce = transactionsFrom(_myAddress);
-			executeBare(t, _myAddress);
-
-			break;
-		}
-		case Instruction::SUICIDE:
-		{
-			require(1);
-			Address dest = asAddress(stack.back());
-			u256 minusVoidFee = myMemory.size() * c_memoryFee;
-			addBalance(dest, balance(_myAddress) + minusVoidFee);
-			m_cache[_myAddress].kill();
-			// ...follow through to...
-		}
-		case Instruction::STOP:
-			return;
-		default:
-			throw BadInstruction();
-		}
-	}
+    if (auto a = account(_addr))
+        return a->nonce();
+    else
+        return m_accountStartNonce;
 }
+
+u256 State::storage(Address const& _id, u256 const& _key) const
+{
+    if (Account const* a = account(_id))
+        return a->storageValue(_key, m_db);
+    else
+        return 0;
+}
+
+void State::setStorage(Address const& _contract, u256 const& _key, u256 const& _value)
+{
+    m_changeLog.emplace_back(_contract, _key, storage(_contract, _key));
+    m_cache[_contract].setStorage(_key, _value);
+}
+
+u256 State::originalStorageValue(Address const& _contract, u256 const& _key) const
+{
+    if (Account const* a = account(_contract))
+        return a->originalStorageValue(_key, m_db);
+    else
+        return 0;
+}
+
+void State::clearStorage(Address const& _contract)
+{
+    h256 const& oldHash{m_cache[_contract].baseRoot()};
+    if (oldHash == EmptyTrie)
+        return;
+    m_changeLog.emplace_back(Change::StorageRoot, _contract, oldHash);
+    m_cache[_contract].clearStorage();
+}
+
+map<h256, pair<u256, u256>> State::storage(Address const& _id) const
+{
+#if ETH_FATDB
+    map<h256, pair<u256, u256>> ret;
+
+    if (Account const* a = account(_id))
+    {
+        // Pull out all values from trie storage.
+        if (h256 root = a->baseRoot())
+        {
+            SecureTrieDB<h256, OverlayDB> memdb(const_cast<OverlayDB*>(&m_db), root);       // promise we won't alter the overlay! :)
+
+            for (auto it = memdb.hashedBegin(); it != memdb.hashedEnd(); ++it)
+            {
+                h256 const hashedKey((*it).first);
+                u256 const key = h256(it.key());
+                u256 const value = RLP((*it).second).toInt<u256>();
+                ret[hashedKey] = make_pair(key, value);
+            }
+        }
+
+        // Then merge cached storage over the top.
+        for (auto const& i : a->storageOverlay())
+        {
+            h256 const key = i.first;
+            h256 const hashedKey = sha3(key);
+            if (i.second)
+                ret[hashedKey] = i;
+            else
+                ret.erase(hashedKey);
+        }
+    }
+    return ret;
+#else
+    (void) _id;
+    BOOST_THROW_EXCEPTION(InterfaceNotSupported() << errinfo_interface("State::storage(Address const& _id)"));
+#endif
+}
+
+h256 State::storageRoot(Address const& _id) const
+{
+    string s = m_state.at(_id);
+    if (s.size())
+    {
+        RLP r(s);
+        return r[2].toHash<h256>();
+    }
+    return EmptyTrie;
+}
+
+bytes const& State::code(Address const& _addr) const
+{
+    Account const* a = account(_addr);
+    if (!a || a->codeHash() == EmptySHA3)
+        return NullBytes;
+
+    if (a->code().empty())
+    {
+        // Load the code from the backend.
+        Account* mutableAccount = const_cast<Account*>(a);
+        mutableAccount->noteCode(m_db.lookup(a->codeHash()));
+        CodeSizeCache::instance().store(a->codeHash(), a->code().size());
+    }
+
+    return a->code();
+}
+
+void State::setCode(Address const& _address, bytes&& _code, u256 const& _version)
+{
+    // rollback assumes that overwriting of the code never happens
+    // (not allowed in contract creation logic in Executive)
+    assert(!addressHasCode(_address));
+    m_changeLog.emplace_back(Change::Code, _address);
+    m_cache[_address].setCode(move(_code), _version);
+}
+
+h256 State::codeHash(Address const& _a) const
+{
+    if (Account const* a = account(_a))
+        return a->codeHash();
+    else
+        return EmptySHA3;
+}
+
+size_t State::codeSize(Address const& _a) const
+{
+    if (Account const* a = account(_a))
+    {
+        if (a->hasNewCode())
+            return a->code().size();
+        auto& codeSizeCache = CodeSizeCache::instance();
+        h256 codeHash = a->codeHash();
+        if (codeSizeCache.contains(codeHash))
+            return codeSizeCache.get(codeHash);
+        else
+        {
+            size_t size = code(_a).size();
+            codeSizeCache.store(codeHash, size);
+            return size;
+        }
+    }
+    else
+        return 0;
+}
+
+u256 State::version(Address const& _a) const
+{
+    Account const* a = account(_a);
+    return a ? a->version() : 0;
+}
+
+void State::unrevertableTouch(Address const& _address)
+{
+    m_unrevertablyTouched.insert(_address);
+}
+
+size_t State::savepoint() const
+{
+    return m_changeLog.size();
+}
+
+void State::rollback(size_t _savepoint)
+{
+    while (_savepoint != m_changeLog.size())
+    {
+        auto& change = m_changeLog.back();
+        auto& account = m_cache[change.address];
+
+        // Public State API cannot be used here because it will add another
+        // change log entry.
+        switch (change.kind)
+        {
+        case Change::Storage:
+            account.setStorage(change.key, change.value);
+            break;
+        case Change::StorageRoot:
+            account.setStorageRoot(change.value);
+            break;
+        case Change::Balance:
+            account.addBalance(0 - change.value);
+            break;
+        case Change::Nonce:
+            account.setNonce(change.value);
+            break;
+        case Change::Create:
+            m_cache.erase(change.address);
+            break;
+        case Change::Code:
+            account.resetCode();
+            break;
+        case Change::Touch:
+            account.untouch();
+            m_unchangedCacheEntries.emplace_back(change.address);
+            break;
+        }
+        m_changeLog.pop_back();
+    }
+}
+
+std::pair<ExecutionResult, TransactionReceipt> State::execute(EnvInfo const& _envInfo, SealEngineFace const& _sealEngine, Transaction const& _t, Permanence _p, OnOpFunc const& _onOp)
+{
+    // Create and initialize the executive. This will throw fairly cheaply and quickly if the
+    // transaction is bad in any way.
+    Executive e(*this, _envInfo, _sealEngine);
+    ExecutionResult res;
+    e.setResultRecipient(res);
+
+    auto onOp = _onOp;
+    if (isVmTraceEnabled() && !onOp)
+        onOp = e.simpleTrace();
+
+    u256 const startGasUsed = _envInfo.gasUsed();
+    bool const statusCode = executeTransaction(e, _t, onOp);
+
+    bool removeEmptyAccounts = false;
+    switch (_p)
+    {
+        case Permanence::Reverted:
+            m_cache.clear();
+            break;
+        case Permanence::Committed:
+            removeEmptyAccounts = _envInfo.number() >= _sealEngine.chainParams().EIP158ForkBlock;
+            commit(removeEmptyAccounts ? State::CommitBehaviour::RemoveEmptyAccounts : State::CommitBehaviour::KeepEmptyAccounts);
+            break;
+        case Permanence::Uncommitted:
+            break;
+    }
+
+    TransactionReceipt const receipt = _envInfo.number() >= _sealEngine.chainParams().byzantiumForkBlock ?
+        TransactionReceipt(statusCode, startGasUsed + e.gasUsed(), e.logs()) :
+        TransactionReceipt(rootHash(), startGasUsed + e.gasUsed(), e.logs());
+    return make_pair(res, receipt);
+}
+
+void State::executeBlockTransactions(Block const& _block, unsigned _txCount,
+    LastBlockHashesFace const& _lastHashes, SealEngineFace const& _sealEngine)
+{
+    u256 gasUsed = 0;
+    for (unsigned i = 0; i < _txCount; ++i)
+    {
+        EnvInfo envInfo(_block.info(), _lastHashes, gasUsed, _sealEngine.chainParams().chainID);
+
+        Executive e(*this, envInfo, _sealEngine);
+        executeTransaction(e, _block.pending()[i], OnOpFunc());
+
+        gasUsed += e.gasUsed();
+    }
+}
+
+/// @returns true when normally halted; false when exceptionally halted; throws when internal VM
+/// exception occurred.
+bool State::executeTransaction(Executive& _e, Transaction const& _t, OnOpFunc const& _onOp)
+{
+    size_t const savept = savepoint();
+    try
+    {
+        _e.initialize(_t);
+
+        if (!_e.execute())
+            _e.go(_onOp);
+        return _e.finalize();
+    }
+    catch (Exception const&)
+    {
+        rollback(savept);
+        throw;
+    }
+}
+
+std::ostream& dev::eth::operator<<(std::ostream& _out, State const& _s)
+{
+    _out << "--- " << _s.rootHash() << std::endl;
+    std::set<Address> d;
+    std::set<Address> dtr;
+    auto trie = SecureTrieDB<Address, OverlayDB>(const_cast<OverlayDB*>(&_s.m_db), _s.rootHash());
+    for (auto i: trie)
+        d.insert(i.first), dtr.insert(i.first);
+    for (auto i: _s.m_cache)
+        d.insert(i.first);
+
+    for (auto i: d)
+    {
+        auto it = _s.m_cache.find(i);
+        Account* cache = it != _s.m_cache.end() ? &it->second : nullptr;
+        string rlpString = dtr.count(i) ? trie.at(i) : "";
+        RLP r(rlpString);
+        assert(cache || r);
+
+        if (cache && !cache->isAlive())
+            _out << "XXX  " << i << std::endl;
+        else
+        {
+            string lead = (cache ? r ? " *   " : " +   " : "     ");
+            if (cache && r && cache->nonce() == r[0].toInt<u256>() && cache->balance() == r[1].toInt<u256>())
+                lead = " .   ";
+
+            stringstream contout;
+
+            if ((cache && cache->codeHash() == EmptySHA3) || (!cache && r && (h256)r[3] != EmptySHA3))
+            {
+                std::map<u256, u256> mem;
+                std::set<u256> back;
+                std::set<u256> delta;
+                std::set<u256> cached;
+                if (r)
+                {
+                    SecureTrieDB<h256, OverlayDB> memdb(const_cast<OverlayDB*>(&_s.m_db), r[2].toHash<h256>());     // promise we won't alter the overlay! :)
+                    for (auto const& j: memdb)
+                        mem[j.first] = RLP(j.second).toInt<u256>(), back.insert(j.first);
+                }
+                if (cache)
+                    for (auto const& j: cache->storageOverlay())
+                    {
+                        if ((!mem.count(j.first) && j.second) || (mem.count(j.first) && mem.at(j.first) != j.second))
+                            mem[j.first] = j.second, delta.insert(j.first);
+                        else if (j.second)
+                            cached.insert(j.first);
+                    }
+                if (!delta.empty())
+                    lead = (lead == " .   ") ? "*.*  " : "***  ";
+
+                contout << " @:";
+                if (!delta.empty())
+                    contout << "???";
+                else
+                    contout << r[2].toHash<h256>();
+                if (cache && cache->hasNewCode())
+                    contout << " $" << toHex(cache->code());
+                else
+                    contout << " $" << (cache ? cache->codeHash() : r[3].toHash<h256>());
+
+                for (auto const& j: mem)
+                    if (j.second)
+                        contout << std::endl << (delta.count(j.first) ? back.count(j.first) ? " *     " : " +     " : cached.count(j.first) ? " .     " : "       ") << std::hex << nouppercase << std::setw(64) << j.first << ": " << std::setw(0) << j.second ;
+                    else
+                        contout << std::endl << "XXX    " << std::hex << nouppercase << std::setw(64) << j.first << "";
+            }
+            else
+                contout << " [SIMPLE]";
+            _out << lead << i << ": " << std::dec << (cache ? cache->nonce() : r[0].toInt<u256>()) << " #:" << (cache ? cache->balance() : r[1].toInt<u256>()) << contout.str() << std::endl;
+        }
+    }
+    return _out;
+}
+
+State& dev::eth::createIntermediateState(State& o_s, Block const& _block, unsigned _txIndex, BlockChain const& _bc)
+{
+    o_s = _block.state();
+    u256 const rootHash = _block.stateRootBeforeTx(_txIndex);
+    if (rootHash)
+        o_s.setRoot(rootHash);
+    else
+    {
+        o_s.setRoot(_block.stateRootBeforeTx(0));
+        o_s.executeBlockTransactions(_block, _txIndex, _bc.lastBlockHashes(), *_bc.sealEngine());
+    }
+    return o_s;
+}
+
+template <class DB>
+AddressHash dev::eth::commit(AccountMap const& _cache, SecureTrieDB<Address, DB>& _state)
+{
+    AddressHash ret;
+    for (auto const& i: _cache)
+        if (i.second.isDirty())
+        {
+            if (!i.second.isAlive())
+                _state.remove(i.first);
+            else
+            {
+                auto const version = i.second.version();
+
+                // version = 0: [nonce, balance, storageRoot, codeHash]
+                // version > 0: [nonce, balance, storageRoot, codeHash, version]
+                RLPStream s(version != 0 ? 5 : 4);
+                s << i.second.nonce() << i.second.balance();
+
+                if (i.second.storageOverlay().empty())
+                {
+                    assert(i.second.baseRoot());
+                    s.append(i.second.baseRoot());
+                }
+                else
+                {
+                    SecureTrieDB<h256, DB> storageDB(_state.db(), i.second.baseRoot());
+                    for (auto const& j: i.second.storageOverlay())
+                        if (j.second)
+                            storageDB.insert(j.first, rlp(j.second));
+                        else
+                            storageDB.remove(j.first);
+                    assert(storageDB.root());
+                    s.append(storageDB.root());
+                }
+
+                if (i.second.hasNewCode())
+                {
+                    h256 ch = i.second.codeHash();
+                    // Store the size of the code
+                    CodeSizeCache::instance().store(ch, i.second.code().size());
+                    _state.db()->insert(ch, &i.second.code());
+                    s << ch;
+                }
+                else
+                    s << i.second.codeHash();
+
+                if (version != 0)
+                    s << i.second.version();
+
+                _state.insert(i.first, &s.out());
+            }
+            ret.insert(i.first);
+        }
+    return ret;
+}
+
+
+template AddressHash dev::eth::commit<OverlayDB>(AccountMap const& _cache, SecureTrieDB<Address, OverlayDB>& _state);
+template AddressHash dev::eth::commit<StateCacheDB>(AccountMap const& _cache, SecureTrieDB<Address, StateCacheDB>& _state);

@@ -1,117 +1,88 @@
-/*
-	This file is part of cpp-ethereum.
+// Aleth: Ethereum C++ client, tools and libraries.
+// Copyright 2014-2019 Aleth Authors.
+// Licensed under the GNU General Public License, Version 3.
 
-	cpp-ethereum is free software: you can redistribute it and/or modify
-	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation, either version 2 of the License, or
-	(at your option) any later version.
-
-	Foobar is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
-
-	You should have received a copy of the GNU General Public License
-	along with Foobar.  If not, see <http://www.gnu.org/licenses/>.
-*/
-/** @file Transaction.cpp
- * @author Gav Wood <i@gavwood.com>
- * @date 2014
- */
-
-#include <secp256k1.h>
-#include "vector_ref.h"
-#include "Exceptions.h"
+#include <libdevcore/vector_ref.h>
+#include <libdevcore/Log.h>
+#include <libdevcore/CommonIO.h>
+#include <libdevcrypto/Common.h>
+#include <libethcore/Exceptions.h>
+#include <libevm/VMFace.h>
+#include "Interface.h"
 #include "Transaction.h"
 using namespace std;
-using namespace eth;
+using namespace dev;
+using namespace dev::eth;
 
-Transaction::Transaction(bytesConstRef _rlpData)
+#define ETH_ADDRESS_DEBUG 0
+
+std::ostream& dev::eth::operator<<(std::ostream& _out, ExecutionResult const& _er)
 {
-	RLP rlp(_rlpData);
-	nonce = rlp[0].toInt<u256>(RLP::StrictlyInt);
-	receiveAddress = rlp[1].toHash<Address>();
-	value = rlp[2].toInt<u256>(RLP::StrictlyInt);
-	fee = rlp[3].toInt<u256>(RLP::StrictlyInt);
-	data.reserve(rlp[4].itemCountStrict());
-	for (auto const& i: rlp[4])
-		data.push_back(i.toInt<u256>(RLP::StrictlyInt));
-	vrs = Signature{ rlp[5].toInt<byte>(RLP::StrictlyInt), rlp[6].toInt<u256>(RLP::StrictlyInt), rlp[7].toInt<u256>(RLP::StrictlyInt) };
+	_out << "{" << _er.gasUsed << ", " << _er.newAddress << ", " << toHex(_er.output) << "}";
+	return _out;
 }
 
-Address Transaction::sender() const
+TransactionException dev::eth::toTransactionException(Exception const& _e)
 {
-	secp256k1_start();
-
-	h256 sig[2] = { vrs.r, vrs.s };
-	h256 msg = sha3(false);
-
-	byte pubkey[65];
-	int pubkeylen = 65;
-	if (!secp256k1_ecdsa_recover_compact(msg.data(), 32, sig[0].data(), pubkey, &pubkeylen, 0, (int)vrs.v - 27))
-		throw InvalidSignature();
-
-	// TODO: check right160 is correct and shouldn't be left160.
-	auto ret = right160(eth::sha3(bytesConstRef(&(pubkey[1]), 64)));
-
-#if ETH_ADDRESS_DEBUG
-	cout << "---- RECOVER -------------------------------" << endl;
-	cout << "MSG: " << msg << endl;
-	cout << "R S V: " << sig[0] << " " << sig[1] << " " << (int)(vrs.v - 27) << "+27" << endl;
-	cout << "PUB: " << asHex(bytesConstRef(&(pubkey[1]), 64)) << endl;
-	cout << "ADR: " << ret << endl;
-#endif
-	return ret;
+	// Basic Transaction exceptions
+	if (!!dynamic_cast<RLPException const*>(&_e))
+		return TransactionException::BadRLP;
+	if (!!dynamic_cast<OutOfGasIntrinsic const*>(&_e))
+		return TransactionException::OutOfGasIntrinsic;
+	if (!!dynamic_cast<InvalidSignature const*>(&_e))
+		return TransactionException::InvalidSignature;
+	// Executive exceptions
+	if (!!dynamic_cast<OutOfGasBase const*>(&_e))
+		return TransactionException::OutOfGasBase;
+	if (!!dynamic_cast<InvalidNonce const*>(&_e))
+		return TransactionException::InvalidNonce;
+	if (!!dynamic_cast<NotEnoughCash const*>(&_e))
+		return TransactionException::NotEnoughCash;
+	if (!!dynamic_cast<BlockGasLimitReached const*>(&_e))
+		return TransactionException::BlockGasLimitReached;
+	if (!!dynamic_cast<AddressAlreadyUsed const*>(&_e))
+		return TransactionException::AddressAlreadyUsed;
+	// VM execution exceptions
+	if (!!dynamic_cast<BadInstruction const*>(&_e))
+		return TransactionException::BadInstruction;
+	if (!!dynamic_cast<BadJumpDestination const*>(&_e))
+		return TransactionException::BadJumpDestination;
+	if (!!dynamic_cast<OutOfGas const*>(&_e))
+		return TransactionException::OutOfGas;
+	if (!!dynamic_cast<OutOfStack const*>(&_e))
+		return TransactionException::OutOfStack;
+	if (!!dynamic_cast<StackUnderflow const*>(&_e))
+		return TransactionException::StackUnderflow;
+	return TransactionException::Unknown;
 }
 
-void Transaction::sign(Secret _priv)
+std::ostream& dev::eth::operator<<(std::ostream& _out, TransactionException const& _er)
 {
-	int v = 0;
-
-	secp256k1_start();
-
-	h256 msg = sha3(false);
-	h256 sig[2];
-	h256 nonce = kFromMessage(msg, _priv);
-
-	if (!secp256k1_ecdsa_sign_compact(msg.data(), 32, sig[0].data(), _priv.data(), nonce.data(), &v))
-		throw InvalidSignature();
-#if ETH_ADDRESS_DEBUG
-	cout << "---- SIGN -------------------------------" << endl;
-	cout << "MSG: " << msg << endl;
-	cout << "SEC: " << _priv << endl;
-	cout << "NON: " << nonce << endl;
-	cout << "R S V: " << sig[0] << " " << sig[1] << " " << v << "+27" << endl;
-#endif
-
-	vrs.v = (byte)(v + 27);
-	vrs.r = (u256)sig[0];
-	vrs.s = (u256)sig[1];
+	switch (_er)
+	{
+		case TransactionException::None: _out << "None"; break;
+		case TransactionException::BadRLP: _out << "BadRLP"; break;
+		case TransactionException::InvalidFormat: _out << "InvalidFormat"; break;
+		case TransactionException::OutOfGasIntrinsic: _out << "OutOfGasIntrinsic"; break;
+		case TransactionException::InvalidSignature: _out << "InvalidSignature"; break;
+		case TransactionException::InvalidNonce: _out << "InvalidNonce"; break;
+		case TransactionException::NotEnoughCash: _out << "NotEnoughCash"; break;
+		case TransactionException::OutOfGasBase: _out << "OutOfGasBase"; break;
+		case TransactionException::BlockGasLimitReached: _out << "BlockGasLimitReached"; break;
+		case TransactionException::BadInstruction: _out << "BadInstruction"; break;
+		case TransactionException::BadJumpDestination: _out << "BadJumpDestination"; break;
+		case TransactionException::OutOfGas: _out << "OutOfGas"; break;
+		case TransactionException::OutOfStack: _out << "OutOfStack"; break;
+		case TransactionException::StackUnderflow: _out << "StackUnderflow"; break;
+        case TransactionException::RevertInstruction:
+            _out << "RevertInstruction";
+            break;
+        default: _out << "Unknown"; break;
+	}
+	return _out;
 }
 
-void Transaction::fillStream(RLPStream& _s, bool _sig) const
+Transaction::Transaction(bytesConstRef _rlpData, CheckTransaction _checkSig):
+	TransactionBase(_rlpData, _checkSig)
 {
-	_s.appendList(_sig ? 8 : 5);
-	_s << nonce << receiveAddress << value << fee << data;
-	if (_sig)
-		_s << vrs.v << vrs.r << vrs.s;
 }
-
-// If the h256 return is an integer, store it in bigendian (i.e. u256 ret; ... return (h256)ret; )
-h256 Transaction::kFromMessage(h256 _msg, h256 _priv)
-{
-	// TODO!
-	/*
-	v = '\x01' * 32
-	k = '\x00' * 32
-	priv = encode_privkey(priv,'bin')
-	msghash = encode(hash_to_int(msghash),256,32)
-	k = hmac.new(k, v+'\x00'+priv+msghash, hashlib.sha256).digest()
-	v = hmac.new(k, v, hashlib.sha256).digest()
-	k = hmac.new(k, v+'\x01'+priv+msghash, hashlib.sha256).digest()
-	v = hmac.new(k, v, hashlib.sha256).digest()
-	return decode(hmac.new(k, v, hashlib.sha256).digest(),256)
-	*/
-	return _msg ^ _priv;
-}
-

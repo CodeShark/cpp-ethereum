@@ -1,21 +1,6 @@
-cmake_policy(SET CMP0015 NEW)
+file(GLOB sources "*.cpp" "*.h")
 
-include_directories(../../secp256k1/include)
-link_directories(../../secp256k1)
+add_library(ethereum ${sources})
 
-include_directories(../../cryptopp562)
-link_directories(../../cryptopp562)
-
-aux_source_directory(. SRC_LIST)
-add_library(ethereum ${SRC_LIST})
-
-find_package(Threads REQUIRED)
-
-target_link_libraries(ethereum secp256k1)
-target_link_libraries(ethereum miniupnpc)
-target_link_libraries(ethereum leveldb)
-target_link_libraries(ethereum cryptopp)
-target_link_libraries(ethereum gmp)
-target_link_libraries(ethereum boost_system)
-target_link_libraries(ethereum boost_filesystem)
-target_link_libraries(ethereum ${CMAKE_THREAD_LIBS_INIT})
+target_include_directories(ethereum PRIVATE "${UTILS_INCLUDE_DIR}")
+target_link_libraries(ethereum PUBLIC evm ethcore p2p devcrypto devcore PRIVATE jsoncpp_lib_static Snappy::snappy Boost::fiber Boost::context)

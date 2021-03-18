@@ -1,65 +1,134 @@
-/*
-	This file is part of cpp-ethereum.
+// Aleth: Ethereum C++ client, tools and libraries.
+// Copyright 2014-2019 Aleth Authors.
+// Licensed under the GNU General Public License, Version 3.
 
-	cpp-ethereum is free software: you can redistribute it and/or modify
-	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation, either version 2 of the License, or
-	(at your option) any later version.
-
-	Foobar is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
-
-	You should have received a copy of the GNU General Public License
-	along with Foobar.  If not, see <http://www.gnu.org/licenses/>.
-*/
-/** @file Transaction.h
- * @author Gav Wood <i@gavwood.com>
- * @date 2014
- */
 
 #pragma once
 
-#include "Common.h"
-#include "RLP.h"
+#include <libethcore/Common.h>
+#include <libethcore/TransactionBase.h>
+#include <libethcore/ChainOperationParams.h>
+#include <libdevcore/RLP.h>
+#include <libdevcore/SHA3.h>
 
+namespace dev
+{
 namespace eth
 {
 
-struct Signature
+enum class TransactionException
 {
-	byte v;
-	u256 r;
-	u256 s;
+	None = 0,
+	Unknown,
+	BadRLP,
+	InvalidFormat,
+	OutOfGasIntrinsic,		///< Too little gas to pay for the base transaction cost.
+	InvalidSignature,
+	InvalidNonce,
+	NotEnoughCash,
+	OutOfGasBase,			///< Too little gas to pay for the base transaction cost.
+	BlockGasLimitReached,
+	BadInstruction,
+	BadJumpDestination,
+	OutOfGas,				///< Ran out of gas executing code of the transaction.
+	OutOfStack,				///< Ran out of stack executing code of the transaction.
+	StackUnderflow,
+	RevertInstruction,
+	InvalidZeroSignatureFormat,
+	AddressAlreadyUsed
 };
 
-// [ nonce, receiving_address, value, fee, [ data item 0, data item 1 ... data item n ], v, r, s ]
-struct Transaction
+enum class CodeDeposit
 {
+	None = 0,
+	Failed,
+	Success
+};
+
+struct VMException;
+
+TransactionException toTransactionException(Exception const& _e);
+std::ostream& operator<<(std::ostream& _out, TransactionException const& _er);
+
+/// Description of the result of executing a transaction.
+struct ExecutionResult
+{
+	u256 gasUsed = 0;
+	TransactionException excepted = TransactionException::Unknown;
+	Address newAddress;
+	bytes output;
+	CodeDeposit codeDeposit = CodeDeposit::None;					///< Failed if an attempted deposit failed due to lack of gas.
+	u256 gasRefunded = 0;
+	unsigned depositSize = 0; 										///< Amount of code of the creation's attempted deposit.
+	u256 gasForDeposit; 											///< Amount of gas remaining for the code deposit phase.
+};
+
+std::ostream& operator<<(std::ostream& _out, ExecutionResult const& _er);
+
+/// Encodes a transaction, ready to be exported to or freshly imported from RLP.
+class Transaction: public TransactionBase
+{
+public:
+	/// Constructs a null transaction.
 	Transaction() {}
-	Transaction(bytesConstRef _rlp);
-	Transaction(bytes const& _rlp): Transaction(&_rlp) {}
 
-	u256 nonce;
-	Address receiveAddress;
-	u256 value;
-	u256 fee;
-	u256s data;
-	Signature vrs;
+	/// Constructs from a transaction skeleton & optional secret.
+	Transaction(TransactionSkeleton const& _ts, Secret const& _s = Secret()): TransactionBase(_ts, _s) {}
 
-	Address sender() const;
-	void sign(Secret _priv);
+	/// Constructs a signed message-call transaction.
+	Transaction(u256 const& _value, u256 const& _gasPrice, u256 const& _gas, Address const& _dest, bytes const& _data, u256 const& _nonce, Secret const& _secret):
+		TransactionBase(_value, _gasPrice, _gas, _dest, _data, _nonce, _secret)
+	{}
 
-	static h256 kFromMessage(h256 _msg, h256 _priv);
+	/// Constructs a signed contract-creation transaction.
+	Transaction(u256 const& _value, u256 const& _gasPrice, u256 const& _gas, bytes const& _data, u256 const& _nonce, Secret const& _secret):
+		TransactionBase(_value, _gasPrice, _gas, _data, _nonce, _secret)
+	{}
 
-	void fillStream(RLPStream& _s, bool _sig = true) const;
-	bytes rlp(bool _sig = true) const { RLPStream s; fillStream(s, _sig); return s.out(); }
-	std::string rlpString(bool _sig = true) const { return asString(rlp(_sig)); }
-	h256 sha3(bool _sig = true) const { RLPStream s; fillStream(s, _sig); return eth::sha3(s.out()); }
-	bytes sha3Bytes(bool _sig = true) const { RLPStream s; fillStream(s, _sig); return eth::sha3Bytes(s.out()); }
+	/// Constructs an unsigned message-call transaction.
+	Transaction(u256 const& _value, u256 const& _gasPrice, u256 const& _gas, Address const& _dest, bytes const& _data, u256 const& _nonce = Invalid256):
+		TransactionBase(_value, _gasPrice, _gas, _dest, _data, _nonce)
+	{}
+
+	/// Constructs an unsigned contract-creation transaction.
+	Transaction(u256 const& _value, u256 const& _gasPrice, u256 const& _gas, bytes const& _data, u256 const& _nonce = Invalid256):
+		TransactionBase(_value, _gasPrice, _gas, _data, _nonce)
+	{}
+
+	/// Constructs a transaction from the given RLP.
+	explicit Transaction(bytesConstRef _rlp, CheckTransaction _checkSig);
+
+	/// Constructs a transaction from the given RLP.
+	explicit Transaction(bytes const& _rlp, CheckTransaction _checkSig): Transaction(&_rlp, _checkSig) {}
+};
+
+/// Nice name for vector of Transaction.
+using Transactions = std::vector<Transaction>;
+
+class LocalisedTransaction: public Transaction
+{
+public:
+	LocalisedTransaction(
+		Transaction const& _t,
+		h256 const& _blockHash,
+		unsigned _transactionIndex,
+		BlockNumber _blockNumber = 0
+	):
+		Transaction(_t),
+		m_blockHash(_blockHash),
+		m_transactionIndex(_transactionIndex),
+		m_blockNumber(_blockNumber)
+	{}
+
+	h256 const& blockHash() const { return m_blockHash; }
+	unsigned transactionIndex() const { return m_transactionIndex; }
+	BlockNumber blockNumber() const { return m_blockNumber; }
+
+private:
+	h256 m_blockHash;
+	unsigned m_transactionIndex;
+	BlockNumber m_blockNumber;
 };
 
 }
-
-
+}
